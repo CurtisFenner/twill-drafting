@@ -133,41 +133,6 @@ function getMouseHovering(): Figure[] {
 		.map(x => x.figure);
 }
 
-// Make a regular pentagon
-let initial = new Map<string, number>();
-let equations = [constraints.givenLength("v0", "v1", 100)];
-for (let i = 0; i < 5; i++) {
-	const v0 = "v" + i;
-	const v1 = "v" + (i + 1) % 5;
-	const v2 = "v" + (i + 2) % 5;
-	initial.set(v0 + ".x", Math.random() * 1000);
-	initial.set(v0 + ".y", Math.random() * 1000);
-	equations.push(
-		constraints.equalLengths(v0, v1, v1, v2)
-	);
-}
-
-for (const e of equations) {
-	console.log(e.toString());
-}
-
-const m = constraints.gradientDescent(initial, equations, 0.5, 1);
-console.log(m);
-const out = m.solution;
-console.log("errors", m.errors);
-console.log(out);
-console.log(m.elapsed, "elapsed");
-
-
-for (let i = 0; i < 5; i++) {
-	const v0 = "v" + i;
-	const v1 = "v" + (i + 1) % 5;
-	const dx = out.get(v0 + ".x")! - out.get(v1 + ".x")!;
-	const dy = out.get(v0 + ".y")! - out.get(v1 + ".y")!;
-	const dm = Math.sqrt(dx ** 2 + dy ** 2);
-	console.log(v0, "-", v1, ":", dm);
-}
-
 function rerender(ctx: CanvasRenderingContext2D, canvas: HTMLCanvasElement): void {
 	ctx.clearRect(0, 0, canvas.width, canvas.height);
 
@@ -206,16 +171,6 @@ function rerender(ctx: CanvasRenderingContext2D, canvas: HTMLCanvasElement): voi
 			console.error("rerender: unhandled figure", figure);
 		}
 	}
-
-	for (let i = 0; i < 5; i++) {
-		const v0 = "v" + i;
-		const v1 = "v" + (i + 1) % 5;
-		ctx.beginPath();
-		ctx.moveTo(out.get(v0 + ".x")!, out.get(v0 + ".y")!);
-		ctx.lineTo(out.get(v1 + ".x")!, out.get(v1 + ".y")!);
-		ctx.stroke();
-	}
-
 }
 
 about.canvas.addEventListener("mousemove", e => {
