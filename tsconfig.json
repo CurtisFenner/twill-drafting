@@ -1,0 +1,12 @@
+{
+	"compilerOptions": {
+		"strict": true,
+		"outDir": "compiled",
+		"module": "ES2022",
+		"target": "ES2022",
+		"lib": [
+			"ES2015",
+			"DOM"
+		]
+	}
+}
