@@ -10,6 +10,8 @@ export type Position = {
 	y: number,
 };
 
+export const EPSILON = 1.0e-3;
+
 export class Segment {
 	constructor(
 		public readonly from: Position,
@@ -85,3 +87,68 @@ export function pointDistance(a: Position, b: Position): number {
 	return Math.sqrt(dx ** 2 + dy ** 2);
 }
 
+export function pointSubtract(left: Position, right: Position): Position {
+	return {
+		x: left.x - right.x,
+		y: left.y - right.y,
+	};
+}
+
+export function pointMagnitude(a: Position): number {
+	return Math.sqrt(a.x ** 2 + a.y ** 2);
+}
+
+export function linearSum(...vs: [number, Position][]): Position {
+	const out = { x: 0, y: 0 };
+	for (const [c, v] of vs) {
+		out.x += c * v.x;
+		out.y += c * v.y;
+	}
+	return out;
+}
+
+export type Circle = {
+	radius: number,
+	center: Position,
+};
+
+export function circleCircleIntersection(a: Circle, b: Circle, epsilon: number = EPSILON): {
+	tag: "points",
+	points: Position[],
+} | { tag: "circle", circle: Circle } {
+	if (a.radius < 0) {
+		return circleCircleIntersection({ radius: -a.radius, center: a.center }, b, epsilon);
+	} else if (b.radius < 0) {
+		return circleCircleIntersection(a, { radius: -b.radius, center: b.center }, epsilon);
+	}
+
+	const separation = pointSubtract(b.center, a.center);
+	const separationLength = pointMagnitude(separation);
+
+	if (separationLength <= EPSILON && Math.abs(a.radius - b.radius) <= EPSILON) {
+		return { tag: "circle", circle: a };
+	}
+
+	// Derived from the Law of Cosines
+	const aAngle = Math.acos((a.radius ** 2 + separationLength ** 2 - b.radius ** 2) / (2 * a.radius * separationLength));
+	if (!isFinite(aAngle)) {
+		return { tag: "points", points: [] };
+	}
+
+	const horizontal = {
+		x: separation.x / separationLength,
+		y: separation.y / separationLength,
+	};
+	const vertical = {
+		x: -horizontal.y,
+		y: horizontal.x,
+	};
+
+	return {
+		tag: "points",
+		points: [
+			linearSum([1, a.center], [a.radius * Math.cos(aAngle), horizontal], [a.radius * Math.sin(aAngle), vertical]),
+			linearSum([1, a.center], [a.radius * Math.cos(aAngle), horizontal], [-a.radius * Math.sin(aAngle), vertical]),
+		],
+	};
+}

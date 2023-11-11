@@ -1,4 +1,5 @@
 import { Position, Segment, pointDistance } from "./geometry.js";
+import * as geometry from "./geometry.js";
 import * as constraints from "./constraints.js";
 
 function createFullscreenCanvas(parent: HTMLElement, rerender: (ctx: CanvasRenderingContext2D, canvas: HTMLCanvasElement) => void) {
@@ -187,3 +188,38 @@ about.canvas.addEventListener("mousemove", e => {
 about.canvas.addEventListener("mousedown", e => {
 
 });
+
+
+const out = constraints.solve(
+	new Map([
+		["a", { x: 100, y: 100 }],
+		["b", { x: 200, y: 300 }],
+		["c", { x: 400, y: 900 }],
+	]),
+	[
+		{
+			tag: "fixed",
+			a: "a",
+			position: { x: 50, y: 50 },
+		},
+		{
+			tag: "distance",
+			a: "a",
+			b: "b",
+			distance: 50,
+		},
+		{
+			tag: "distance",
+			a: "a",
+			b: "c",
+			distance: 50,
+		},
+		{
+			tag: "distance",
+			a: "b",
+			b: "c",
+			distance: 50,
+		},
+	]
+)
+console.log(out);
