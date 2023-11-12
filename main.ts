@@ -75,6 +75,13 @@ class SegmentFigure {
 		public from: PointFigure,
 		public to: PointFigure,
 	) { }
+
+	nearest(query: Position): Position {
+		return geometry.projectToLine({
+			from: this.from.position,
+			to: this.to.position
+		}, query);
+	}
 }
 
 class PointDistanceFigure {
@@ -113,7 +120,7 @@ function screenDistanceToFigure(figure: Figure, screenQuery: Position): number {
 	const LINE_RADIUS = 3;
 	if (figure instanceof PointFigure) {
 		const onScreen = view.toScreen(figure.position);
-		return pointDistance(onScreen, screenQuery) - POINT_RADIUS;
+		return pointDistance(onScreen, screenQuery) - POINT_RADIUS * 2;
 	} else if (figure instanceof SegmentFigure) {
 		const screenSegment = new Segment(
 			view.toScreen(figure.from.position),
@@ -134,6 +141,7 @@ function screenDistanceToFigure(figure: Figure, screenQuery: Position): number {
 const BACKGROUND_COLOR = "#FFFFFF";
 const REGULAR_INK_COLOR = "#000000";
 const HOVER_COLOR = "#00AA55";
+const SKETCH_COLOR = "#BBBBBB";
 
 const OUTLINE_WIDTH = 2;
 const SEGMENT_WIDTH = 3.5;
@@ -151,9 +159,9 @@ function figureOrdering(f: Figure) {
 	}
 }
 
-function getMouseHovering(): Figure[] {
+function getMouseHovering(screenCursor: Position): Figure[] {
 	return figures
-		.map(figure => ({ figure, distance: screenDistanceToFigure(figure, lastMouseCursor) }))
+		.map(figure => ({ figure, distance: screenDistanceToFigure(figure, screenCursor) }))
 		.filter(x => x.distance <= POINT_DIAMETER + OUTLINE_WIDTH + 1)
 		.sort((a, b) => a.distance - b.distance)
 		.map(x => x.figure);
@@ -162,12 +170,54 @@ function getMouseHovering(): Figure[] {
 function rerender(ctx: CanvasRenderingContext2D, canvas: HTMLCanvasElement): void {
 	ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-	const hovering = getMouseHovering();
+	const hovering = getMouseHovering(lastMouseCursor);
 
-	for (const figure of figures.slice().sort((a, b) => figureOrdering(a) - figureOrdering(b))) {
+	const isChoosingPoint = cursorMode.tag === "lines";
+
+	if (cursorMode.tag === "lines" && cursorMode.from !== null) {
+		// Sketching a new line
+		const destination = choosePoint(lastMouseCursor);
+		ctx.lineWidth = SEGMENT_WIDTH;
+		ctx.lineCap = "round";
+		ctx.strokeStyle = SKETCH_COLOR;
+		const fromScreen = view.toScreen(cursorMode.from.position);
+		const toScreen = view.toScreen(destination.world);
+		ctx.beginPath();
+		ctx.moveTo(fromScreen.x, fromScreen.y);
+		ctx.lineTo(toScreen.x, toScreen.y);
+		ctx.stroke();
+	}
+
+	function compareWithHover(a: Figure, b: Figure): number {
+		const simple = figureOrdering(a) - figureOrdering(b);
+		if (simple !== 0) {
+			return simple;
+		}
+		const forA = hovering.indexOf(a);
+		const forB = hovering.indexOf(b);
+		if (forA === forB) {
+			return 0;
+		} else if (forA === -1) {
+			return -1;
+		} else if (forB === -1) {
+			return +1;
+		}
+		return forA - forB;
+	}
+
+	for (const figure of figures.slice().sort(compareWithHover)) {
 		let ink = figure === hovering[0]
 			? HOVER_COLOR
 			: REGULAR_INK_COLOR;
+
+		if (isChoosingPoint
+			&& hovering[0] instanceof SegmentFigure
+			&& figure === hovering[1]
+			&& figure instanceof SegmentFigure) {
+			// The intersection of these two lines will be chosen.
+			ink = HOVER_COLOR;
+		}
+
 		if (figure instanceof PointFigure) {
 			const screen = view.toScreen(figure.position);
 			ctx.fillStyle = BACKGROUND_COLOR;
@@ -246,20 +296,112 @@ function rerender(ctx: CanvasRenderingContext2D, canvas: HTMLCanvasElement): voi
 	}
 }
 
-about.canvas.addEventListener("mousemove", e => {
+function cursorPosition(e: MouseEvent): Position {
 	if (!(e.currentTarget instanceof HTMLCanvasElement)) {
 		throw new Error("unreachable");
 	}
 	const rect = e.currentTarget.getBoundingClientRect();
-	lastMouseCursor = {
+	return {
 		x: e.clientX - rect.left,
 		y: e.clientY - rect.top,
 	};
+}
+
+about.canvas.addEventListener("mousemove", e => {
+	lastMouseCursor = cursorPosition(e);
 });
+
+type LineMode = {
+	tag: "lines",
+	from: null | PointFigure,
+};
+
+let cursorMode: LineMode = {
+	tag: "lines",
+	from: null,
+};
+
+function choosePoint(screenCursor: Position): { world: Position, figure: PointFigure | null, incident: Figure[] } {
+	const hovering = getMouseHovering(screenCursor);
+	const world = view.toWorld(screenCursor);
+	if (hovering[0] instanceof PointFigure) {
+		return {
+			world: hovering[0].position,
+			figure: hovering[0],
+			incident: [],
+		};
+	} else if (hovering[0] instanceof SegmentFigure && hovering[1] instanceof SegmentFigure) {
+		// On the intersection of the two segments
+	} else if (hovering[0] instanceof SegmentFigure) {
+		// On the segment
+		return {
+			world: hovering[0].nearest(world),
+			figure: null,
+			incident: [hovering[0]],
+		};
+	}
+
+	return {
+		world,
+		figure: null,
+		incident: [],
+	};
+}
+
+function chooseOrCreatePoint(screenCursor: Position): PointFigure {
+	const choice = choosePoint(screenCursor);
+	if (!choice.figure) {
+		const out = new PointFigure(choice.world);
+		figures.push(out);
+		return out;
+	}
+	return choice.figure;
+}
+
+function createSegment(from: PointFigure, to: PointFigure): SegmentFigure {
+	const existing = figures.find(figure => {
+		if (figure instanceof SegmentFigure) {
+			return (figure.from === from && figure.to === to) || (figure.from === to && figure.to === from);
+		}
+		return false;
+	}) as SegmentFigure | undefined;
+	if (!existing) {
+		const out = new SegmentFigure(from, to);
+		figures.push(out);
+		return out;
+	}
+	return existing;
+}
 
 about.canvas.addEventListener("mousedown", e => {
+	const cursorScreen = cursorPosition(e);
 
+	if (cursorMode.tag === "lines") {
+		if (e.button === 2) {
+			// Cancel draw
+			e.preventDefault;
+			cursorMode.from = null;
+		} else if (e.button === 0) {
+			e.clientX
+			if (cursorMode.from === null) {
+				// Create a new point at the cursor
+				const newPoint = chooseOrCreatePoint(cursorScreen);
+				cursorMode.from = newPoint;
+			} else {
+				// Create a new point & a segment connecting it to the
+				// `from` point.
+				const newPoint = chooseOrCreatePoint(cursorScreen);
+				createSegment(cursorMode.from, newPoint);
+				cursorMode.from = newPoint;
+			}
+		}
+		return false;
+	}
+	// const _: never = cursorMode;
+	console.error("unhandled cursor mode", cursorMode["tag"]);
 });
+
+about.canvas.addEventListener("contextmenu", e => e.preventDefault());
 
 
 const out = constraints.solve(

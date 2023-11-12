@@ -160,3 +160,14 @@ export function circleCircleIntersection(a: Circle, b: Circle, epsilon: number =
 		],
 	};
 }
+
+export function projectToLine(
+	line: { from: Position, to: Position },
+	query: Position,
+): Position {
+	const direction = pointUnit(pointSubtract(line.to, line.from));
+	const relative = pointSubtract(query, line.from);
+	const amount = pointDot(direction, relative);
+
+	return linearSum([1, line.from], [amount, direction]);
+}
