@@ -77,7 +77,24 @@ class SegmentFigure {
 	) { }
 }
 
-type Figure = PointFigure | SegmentFigure;
+class PointDistanceFigure {
+	constructor(
+		public from: PointFigure,
+		public to: PointFigure,
+		public distance: number,
+		public relativePlacement: Position,
+	) { }
+
+	labelWorldPosition() {
+		return geometry.linearSum(
+			[0.5, this.from.position],
+			[0.5, this.to.position],
+			[1, this.relativePlacement],
+		)
+	}
+}
+
+type Figure = PointFigure | SegmentFigure | PointDistanceFigure;
 
 const figures: Figure[] = [
 	new PointFigure({ x: 0, y: 0 }),
@@ -86,6 +103,8 @@ const figures: Figure[] = [
 ];
 
 figures.push(new SegmentFigure(figures[1] as PointFigure, figures[2] as PointFigure));
+
+figures.push(new PointDistanceFigure(figures[1] as PointFigure, figures[2] as PointFigure, 100, { x: -160, y: 120 }));
 
 let lastMouseCursor: Position = { x: 0, y: 0 };
 
@@ -103,6 +122,10 @@ function screenDistanceToFigure(figure: Figure, screenQuery: Position): number {
 		const m = screenSegment.nearestToSegment(screenQuery);
 		const out = pointDistance(m.position, screenQuery) - LINE_RADIUS;
 		return out;
+	} else if (figure instanceof PointDistanceFigure) {
+		// TODO: Include full label shape
+		const onScreen = view.toScreen(figure.labelWorldPosition());
+		return pointDistance(onScreen, screenQuery) - POINT_RADIUS * 2;
 	}
 	const _: never = figure;
 	throw new Error("unhandled figure tag: " + String(figure));
@@ -115,6 +138,8 @@ const HOVER_COLOR = "#00AA55";
 const OUTLINE_WIDTH = 2;
 const SEGMENT_WIDTH = 3.5;
 const POINT_DIAMETER = 5.5;
+const LABELING_WIDTH = 1;
+const DIMENSION_GAP = 7;
 
 function figureOrdering(f: Figure) {
 	if (f instanceof PointFigure) {
@@ -167,6 +192,53 @@ function rerender(ctx: CanvasRenderingContext2D, canvas: HTMLCanvasElement): voi
 			ctx.lineWidth = SEGMENT_WIDTH;
 			ctx.strokeStyle = ink;
 			ctx.stroke();
+		} else if (figure instanceof PointDistanceFigure) {
+			ctx.strokeStyle = ink;
+			ctx.lineWidth = LABELING_WIDTH;
+			ctx.beginPath();
+			const fromScreen = view.toScreen(figure.from.position);
+			const toScreen = view.toScreen(figure.to.position);
+			const labelScreen = view.toScreen(figure.labelWorldPosition());
+
+			const screenAlong = geometry.pointUnit(geometry.pointSubtract(toScreen, fromScreen));
+			const screenPerpendicular = geometry.pointUnit({
+				x: toScreen.y - fromScreen.y,
+				y: fromScreen.x - toScreen.x,
+			});
+
+			const offset = geometry.pointDot(screenPerpendicular, geometry.pointSubtract(labelScreen, fromScreen));
+			const labelAlong = geometry.pointDot(screenAlong, geometry.pointSubtract(labelScreen, fromScreen));
+
+			const fromStart = geometry.linearSum([1, fromScreen], [DIMENSION_GAP * Math.sign(offset), screenPerpendicular]);
+			const fromEnd = geometry.linearSum([1, fromScreen], [offset + DIMENSION_GAP * Math.sign(offset), screenPerpendicular]);
+			const fromLabelLine = geometry.linearSum(
+				[1, fromScreen], [offset, screenPerpendicular], [Math.min(0, labelAlong), screenAlong]
+			);
+			const toLabelLine = geometry.linearSum(
+				[1, fromScreen], [offset, screenPerpendicular], [Math.max(geometry.pointDistance(fromScreen, toScreen), labelAlong), screenAlong]
+			);
+			const toEnd = geometry.linearSum([1, toScreen], [offset + DIMENSION_GAP * Math.sign(offset), screenPerpendicular]);
+			const toStart = geometry.linearSum([1, toScreen], [DIMENSION_GAP * Math.sign(offset), screenPerpendicular]);
+			ctx.beginPath();
+			ctx.moveTo(fromStart.x, fromStart.y);
+			ctx.lineTo(fromEnd.x, fromEnd.y);
+			ctx.moveTo(toStart.x, toStart.y);
+			ctx.lineTo(toEnd.x, toEnd.y);
+			ctx.moveTo(fromLabelLine.x, fromLabelLine.y);
+			ctx.lineTo(toLabelLine.x, toLabelLine.y);
+			ctx.stroke();
+
+			ctx.fillStyle = BACKGROUND_COLOR;
+			const labelText = figure.distance.toString();
+			const fontSize = 20;
+			ctx.font = fontSize + "px 'Josefin Slab'";
+			const textMetrics = ctx.measureText(labelText);
+			ctx.fillRect(labelScreen.x - textMetrics.width / 2 - 4, labelScreen.y - fontSize / 2 - 4, textMetrics.width + 9, fontSize + 9);
+
+			ctx.fillStyle = ink;
+			ctx.textAlign = "center";
+			ctx.textBaseline = "middle";
+			ctx.fillText(labelText, labelScreen.x, labelScreen.y);
 		} else {
 			const _: never = figure;
 			console.error("rerender: unhandled figure", figure);

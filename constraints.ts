@@ -92,7 +92,7 @@ export function solve(
 
 			const relevant = constraints.filter(constraint => constraintDependencies(constraint).includes(variable));
 			const certain = relevant.filter(x => constraintIsCertainExcept(x, variable));
-			const localSolution = solveLocal(variable, certain, solution, initialPoint);
+			const localSolution = solveLocal(variable, certain, solution);
 
 			if (gamutEmpty(localSolution)) {
 				continue;
@@ -149,7 +149,6 @@ function solveLocal(
 	variable: string,
 	constraints: Constraint[],
 	solution: Map<string, geometry.Position>,
-	hint: geometry.Position,
 ): Gamut {
 	const fixed = constraints.find(x => x.a === variable && x.tag === "fixed") as FixedConstraint | undefined;
 	if (fixed !== undefined) {

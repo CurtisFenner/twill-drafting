@@ -94,6 +94,14 @@ export function pointSubtract(left: Position, right: Position): Position {
 	};
 }
 
+export function pointUnit(p: Position): Position {
+	return linearSum([1 / pointMagnitude(p), p]);
+}
+
+export function pointDot(a: Position, b: Position): number {
+	return a.x * b.x + a.y * b.y;
+}
+
 export function pointMagnitude(a: Position): number {
 	return Math.sqrt(a.x ** 2 + a.y ** 2);
 }
