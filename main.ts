@@ -167,6 +167,61 @@ function getMouseHovering(screenCursor: Position): Figure[] {
 		.map(x => x.figure);
 }
 
+function drawLengthDimension(
+	ctx: CanvasRenderingContext2D,
+	fromWorld: Position,
+	toWorld: Position,
+	labelWorld: Position,
+	labelText: string,
+	ink: string,
+): void {
+	ctx.strokeStyle = ink;
+	ctx.lineWidth = LABELING_WIDTH;
+	ctx.beginPath();
+	const fromScreen = view.toScreen(fromWorld);
+	const toScreen = view.toScreen(toWorld);
+	const labelScreen = view.toScreen(labelWorld);
+
+	const screenAlong = geometry.pointUnit(geometry.pointSubtract(toScreen, fromScreen));
+	const screenPerpendicular = geometry.pointUnit({
+		x: toScreen.y - fromScreen.y,
+		y: fromScreen.x - toScreen.x,
+	});
+
+	const offset = geometry.pointDot(screenPerpendicular, geometry.pointSubtract(labelScreen, fromScreen));
+	const labelAlong = geometry.pointDot(screenAlong, geometry.pointSubtract(labelScreen, fromScreen));
+
+	const fromStart = geometry.linearSum([1, fromScreen], [DIMENSION_GAP * Math.sign(offset), screenPerpendicular]);
+	const fromEnd = geometry.linearSum([1, fromScreen], [offset + DIMENSION_GAP * Math.sign(offset), screenPerpendicular]);
+	const fromLabelLine = geometry.linearSum(
+		[1, fromScreen], [offset, screenPerpendicular], [Math.min(0, labelAlong), screenAlong]
+	);
+	const toLabelLine = geometry.linearSum(
+		[1, fromScreen], [offset, screenPerpendicular], [Math.max(geometry.pointDistance(fromScreen, toScreen), labelAlong), screenAlong]
+	);
+	const toEnd = geometry.linearSum([1, toScreen], [offset + DIMENSION_GAP * Math.sign(offset), screenPerpendicular]);
+	const toStart = geometry.linearSum([1, toScreen], [DIMENSION_GAP * Math.sign(offset), screenPerpendicular]);
+	ctx.beginPath();
+	ctx.moveTo(fromStart.x, fromStart.y);
+	ctx.lineTo(fromEnd.x, fromEnd.y);
+	ctx.moveTo(toStart.x, toStart.y);
+	ctx.lineTo(toEnd.x, toEnd.y);
+	ctx.moveTo(fromLabelLine.x, fromLabelLine.y);
+	ctx.lineTo(toLabelLine.x, toLabelLine.y);
+	ctx.stroke();
+
+	ctx.fillStyle = BACKGROUND_COLOR;
+	const fontSize = 20;
+	ctx.font = fontSize + "px 'Josefin Slab'";
+	const textMetrics = ctx.measureText(labelText);
+	ctx.fillRect(labelScreen.x - textMetrics.width / 2 - 4, labelScreen.y - fontSize / 2 - 4, textMetrics.width + 9, fontSize + 9);
+
+	ctx.fillStyle = ink;
+	ctx.textAlign = "center";
+	ctx.textBaseline = "middle";
+	ctx.fillText(labelText, labelScreen.x, labelScreen.y);
+}
+
 function rerender(ctx: CanvasRenderingContext2D, canvas: HTMLCanvasElement): void {
 	ctx.clearRect(0, 0, canvas.width, canvas.height);
 
@@ -186,6 +241,18 @@ function rerender(ctx: CanvasRenderingContext2D, canvas: HTMLCanvasElement): voi
 		ctx.moveTo(fromScreen.x, fromScreen.y);
 		ctx.lineTo(toScreen.x, toScreen.y);
 		ctx.stroke();
+	}
+
+	const sketchingConstraint = getConstraining();
+	if (sketchingConstraint !== null && sketchingConstraint.tag === "point-distance") {
+		drawLengthDimension(
+			ctx,
+			sketchingConstraint.from.position,
+			sketchingConstraint.to.position,
+			view.toWorld(lastMouseCursor),
+			"?",
+			SKETCH_COLOR
+		);
 	}
 
 	function compareWithHover(a: Figure, b: Figure): number {
@@ -243,52 +310,14 @@ function rerender(ctx: CanvasRenderingContext2D, canvas: HTMLCanvasElement): voi
 			ctx.strokeStyle = ink;
 			ctx.stroke();
 		} else if (figure instanceof PointDistanceFigure) {
-			ctx.strokeStyle = ink;
-			ctx.lineWidth = LABELING_WIDTH;
-			ctx.beginPath();
-			const fromScreen = view.toScreen(figure.from.position);
-			const toScreen = view.toScreen(figure.to.position);
-			const labelScreen = view.toScreen(figure.labelWorldPosition());
-
-			const screenAlong = geometry.pointUnit(geometry.pointSubtract(toScreen, fromScreen));
-			const screenPerpendicular = geometry.pointUnit({
-				x: toScreen.y - fromScreen.y,
-				y: fromScreen.x - toScreen.x,
-			});
-
-			const offset = geometry.pointDot(screenPerpendicular, geometry.pointSubtract(labelScreen, fromScreen));
-			const labelAlong = geometry.pointDot(screenAlong, geometry.pointSubtract(labelScreen, fromScreen));
-
-			const fromStart = geometry.linearSum([1, fromScreen], [DIMENSION_GAP * Math.sign(offset), screenPerpendicular]);
-			const fromEnd = geometry.linearSum([1, fromScreen], [offset + DIMENSION_GAP * Math.sign(offset), screenPerpendicular]);
-			const fromLabelLine = geometry.linearSum(
-				[1, fromScreen], [offset, screenPerpendicular], [Math.min(0, labelAlong), screenAlong]
+			drawLengthDimension(
+				ctx,
+				figure.from.position,
+				figure.to.position,
+				figure.labelWorldPosition(),
+				figure.distance.toString(),
+				ink,
 			);
-			const toLabelLine = geometry.linearSum(
-				[1, fromScreen], [offset, screenPerpendicular], [Math.max(geometry.pointDistance(fromScreen, toScreen), labelAlong), screenAlong]
-			);
-			const toEnd = geometry.linearSum([1, toScreen], [offset + DIMENSION_GAP * Math.sign(offset), screenPerpendicular]);
-			const toStart = geometry.linearSum([1, toScreen], [DIMENSION_GAP * Math.sign(offset), screenPerpendicular]);
-			ctx.beginPath();
-			ctx.moveTo(fromStart.x, fromStart.y);
-			ctx.lineTo(fromEnd.x, fromEnd.y);
-			ctx.moveTo(toStart.x, toStart.y);
-			ctx.lineTo(toEnd.x, toEnd.y);
-			ctx.moveTo(fromLabelLine.x, fromLabelLine.y);
-			ctx.lineTo(toLabelLine.x, toLabelLine.y);
-			ctx.stroke();
-
-			ctx.fillStyle = BACKGROUND_COLOR;
-			const labelText = figure.distance.toString();
-			const fontSize = 20;
-			ctx.font = fontSize + "px 'Josefin Slab'";
-			const textMetrics = ctx.measureText(labelText);
-			ctx.fillRect(labelScreen.x - textMetrics.width / 2 - 4, labelScreen.y - fontSize / 2 - 4, textMetrics.width + 9, fontSize + 9);
-
-			ctx.fillStyle = ink;
-			ctx.textAlign = "center";
-			ctx.textBaseline = "middle";
-			ctx.fillText(labelText, labelScreen.x, labelScreen.y);
 		} else {
 			const _: never = figure;
 			console.error("rerender: unhandled figure", figure);
@@ -401,7 +430,7 @@ function placeDimensionBetweenPoints(
 	}
 
 	const currentLength = pointDistance(from.position, to.position);
-	const askedLength = parseLengthMm(prompt("Length of segment (mm):", currentLength.toString()));
+	const askedLength = parseLengthMm(prompt("Length of segment (mm):", currentLength.toFixed(1)));
 	if (askedLength === null) {
 		// Do nothing.
 		return;
@@ -416,6 +445,26 @@ function placeDimensionBetweenPoints(
 	cursorMode.constraining = [];
 }
 
+function getConstraining(): null | { tag: "point-distance", from: PointFigure, to: PointFigure } {
+	if (cursorMode.tag !== "dimension") {
+		return null;
+	}
+
+	if (cursorMode.constraining.length === 1) {
+		const [a] = cursorMode.constraining;
+		if (a instanceof SegmentFigure) {
+			return { tag: "point-distance", from: a.from, to: a.to };
+		}
+	} else if (cursorMode.constraining.length === 2) {
+		const [a, b] = cursorMode.constraining;
+		if (a instanceof PointFigure && b instanceof PointFigure) {
+			return { tag: "point-distance", from: a, to: b };
+		}
+	}
+
+	return null;
+}
+
 function dimensioningClick(cursorScreen: Position): void {
 	const hovering = getMouseHovering(cursorScreen)
 		.filter(figure =>
@@ -425,7 +474,6 @@ function dimensioningClick(cursorScreen: Position): void {
 	if (cursorMode.tag !== "dimension") {
 		throw new Error("dimensioningClick: wrong cursorMode.tag");
 	}
-
 
 	if (cursorMode.constraining.length === 0) {
 		if (hovering) {
@@ -439,29 +487,13 @@ function dimensioningClick(cursorScreen: Position): void {
 
 	if (hovering === undefined) {
 		// Attempt to create a dimension, if it exists.
-		if (cursorMode.constraining.length === 1) {
-			const [first] = cursorMode.constraining;
-			if (first instanceof PointFigure) {
-				// A single point does not make a dimension.
-				cursorMode.constraining = [];
-			} else if (first instanceof SegmentFigure) {
-				// Add a dimension between the segment's two endpoints.
-				placeDimensionBetweenPoints(first.from, first.to, view.toWorld(cursorScreen));
-			} else {
-				cursorMode.constraining = [];
+		const constraining = getConstraining();
+		if (constraining !== null) {
+			if (constraining.tag === "point-distance") {
+				placeDimensionBetweenPoints(constraining.from, constraining.to, view.toWorld(cursorScreen));
 			}
-		} else if (cursorMode.constraining.length === 2) {
-			const [first, second] = cursorMode.constraining;
-			if (first instanceof PointFigure && second instanceof PointFigure) {
-				// Add a dimension between the two points.
-				placeDimensionBetweenPoints(first, second, view.toWorld(cursorScreen));
-			} else {
-				// TODO: (point, segment) and (segment, segment).
-				cursorMode.constraining = [];
-			}
-		} else {
-			cursorMode.constraining = [];
 		}
+		cursorMode.constraining = [];
 		return;
 	}
 
