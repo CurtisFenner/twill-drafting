@@ -337,7 +337,22 @@ function cursorPosition(e: MouseEvent): Position {
 	};
 }
 
-type CursorMode = LineMode | DimensionMode;
+type CursorMode = MoveMode | LineMode | DimensionMode;
+
+type MoveMode = {
+	tag: "move",
+	dragging: null | {
+		tag: "point",
+		figure: PointFigure,
+		originalPointWorld: Position,
+		originalCursorWorld: Position,
+	} | {
+		tag: "dimension-points",
+		figure: DimensionPointDistanceFigure,
+		originalLabelOffset: Position,
+		originalCursorWorld: Position,
+	},
+};
 
 type LineMode = {
 	tag: "lines",
@@ -408,6 +423,8 @@ function createSegment(from: PointFigure, to: PointFigure): SegmentFigure {
 
 about.canvas.addEventListener("mousemove", e => {
 	lastMouseCursor = cursorPosition(e);
+
+	moveDragged(lastMouseCursor);
 });
 
 function parseLengthMm(msg: string | undefined | null): number | null {
@@ -526,10 +543,53 @@ function dimensioningClick(cursorScreen: Position): void {
 	}
 }
 
+function moveDragged(cursorScreen: Position) {
+	if (cursorMode.tag === "move" && cursorMode.dragging !== null) {
+		const mouseMotion = geometry.pointSubtract(view.toWorld(cursorScreen), cursorMode.dragging.originalCursorWorld);
+		if (cursorMode.dragging.tag === "point") {
+			cursorMode.dragging.figure.position = geometry.linearSum(
+				[1, cursorMode.dragging.originalPointWorld],
+				[1, mouseMotion],
+			);
+		} else if (cursorMode.dragging.tag === "dimension-points") {
+			cursorMode.dragging.figure.relativePlacement = geometry.linearSum(
+				[1, cursorMode.dragging.originalLabelOffset],
+				[1, mouseMotion],
+			);
+		}
+	}
+}
+
+about.canvas.addEventListener("mouseup", e => {
+	const cursorScreen = cursorPosition(e);
+	if (cursorMode.tag === "move") {
+		moveDragged(cursorScreen);
+		cursorMode.dragging = null;
+	}
+});
+
 about.canvas.addEventListener("mousedown", e => {
 	const cursorScreen = cursorPosition(e);
 
-	if (cursorMode.tag === "lines") {
+	if (cursorMode.tag === "move") {
+		const hovering = getMouseHovering(cursorScreen)[0];
+		if (hovering instanceof PointFigure) {
+			cursorMode.dragging = {
+				tag: "point",
+				figure: hovering,
+				originalCursorWorld: view.toWorld(cursorScreen),
+				originalPointWorld: hovering.position,
+			};
+		} else if (hovering instanceof DimensionPointDistanceFigure) {
+			cursorMode.dragging = {
+				tag: "dimension-points",
+				figure: hovering,
+				originalCursorWorld: view.toWorld(cursorScreen),
+				originalLabelOffset: hovering.relativePlacement,
+			};
+		}
+		return false;
+	} else if (cursorMode.tag === "lines") {
 		if (e.button === 2) {
 			// Cancel draw
 			e.preventDefault();
@@ -565,11 +625,13 @@ about.canvas.addEventListener("mousedown", e => {
 
 about.canvas.addEventListener("contextmenu", e => e.preventDefault());
 
-const modeLinesRadio = document.getElementById("mode-lines") as HTMLInputElement;
-const modeDimensionRadio = document.getElementById("mode-dimension") as HTMLInputElement;
-
 function modeChange() {
-	if (modeLinesRadio.checked) {
+	if (modeMoveRadio.checked) {
+		cursorMode = {
+			tag: "move",
+			dragging: null,
+		};
+	} else if (modeLinesRadio.checked) {
 		cursorMode = {
 			tag: "lines",
 			from: null,
@@ -582,8 +644,15 @@ function modeChange() {
 	}
 }
 
+const modeMoveRadio = document.getElementById("mode-move") as HTMLInputElement;
+const modeLinesRadio = document.getElementById("mode-lines") as HTMLInputElement;
+const modeDimensionRadio = document.getElementById("mode-dimension") as HTMLInputElement;
+
+modeMoveRadio.addEventListener("input", modeChange);
 modeLinesRadio.addEventListener("input", modeChange);
 modeDimensionRadio.addEventListener("input", modeChange);
+
+modeChange();
 
 const buttonRecalculate = document.getElementById("recalculate") as HTMLButtonElement;
 
