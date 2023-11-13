@@ -307,16 +307,19 @@ function cursorPosition(e: MouseEvent): Position {
 	};
 }
 
-about.canvas.addEventListener("mousemove", e => {
-	lastMouseCursor = cursorPosition(e);
-});
+type CursorMode = LineMode | DimensionMode;
 
 type LineMode = {
 	tag: "lines",
 	from: null | PointFigure,
 };
 
-let cursorMode: LineMode = {
+type DimensionMode = {
+	tag: "dimension",
+	constraining: Figure[],
+};
+
+let cursorMode: CursorMode = {
 	tag: "lines",
 	from: null,
 };
@@ -373,16 +376,132 @@ function createSegment(from: PointFigure, to: PointFigure): SegmentFigure {
 	return existing;
 }
 
+about.canvas.addEventListener("mousemove", e => {
+	lastMouseCursor = cursorPosition(e);
+});
+
+function parseLengthMm(msg: string | undefined | null): number | null {
+	if (!msg) {
+		return null;
+	}
+	const n = parseFloat(msg.trim());
+	if (!isFinite(n) || n <= 0) {
+		return null;
+	}
+	return n;
+}
+
+function placeDimensionBetweenPoints(
+	from: PointFigure,
+	to: PointFigure,
+	atWorld: Position,
+) {
+	if (cursorMode.tag !== "dimension") {
+		throw new Error("placeDimensionBetweenPoints: invalid cursorMode");
+	}
+
+	const currentLength = pointDistance(from.position, to.position);
+	const askedLength = parseLengthMm(prompt("Length of segment (mm):", currentLength.toString()));
+	if (askedLength === null) {
+		// Do nothing.
+		return;
+	}
+
+	const relativePlacement = geometry.pointSubtract(
+		atWorld,
+		geometry.linearSum([0.5, from.position], [0.5, to.position]),
+	);
+	const dimension = new PointDistanceFigure(from, to, askedLength, relativePlacement);
+	figures.push(dimension);
+	cursorMode.constraining = [];
+}
+
+function dimensioningClick(cursorScreen: Position): void {
+	const hovering = getMouseHovering(cursorScreen)
+		.filter(figure =>
+			figure instanceof PointFigure || figure instanceof SegmentFigure
+		)[0] as undefined | PointFigure | SegmentFigure;
+
+	if (cursorMode.tag !== "dimension") {
+		throw new Error("dimensioningClick: wrong cursorMode.tag");
+	}
+
+
+	if (cursorMode.constraining.length === 0) {
+		if (hovering) {
+			// Begin measuring dimensions from hovering
+			cursorMode.constraining.push(hovering);
+		} else {
+			// Do nothing
+		}
+		return;
+	}
+
+	if (hovering === undefined) {
+		// Attempt to create a dimension, if it exists.
+		if (cursorMode.constraining.length === 1) {
+			const [first] = cursorMode.constraining;
+			if (first instanceof PointFigure) {
+				// A single point does not make a dimension.
+				cursorMode.constraining = [];
+			} else if (first instanceof SegmentFigure) {
+				// Add a dimension between the segment's two endpoints.
+				placeDimensionBetweenPoints(first.from, first.to, view.toWorld(cursorScreen));
+			} else {
+				cursorMode.constraining = [];
+			}
+		} else if (cursorMode.constraining.length === 2) {
+			const [first, second] = cursorMode.constraining;
+			if (first instanceof PointFigure && second instanceof PointFigure) {
+				// Add a dimension between the two points.
+				placeDimensionBetweenPoints(first, second, view.toWorld(cursorScreen));
+			} else {
+				// TODO: (point, segment) and (segment, segment).
+				cursorMode.constraining = [];
+			}
+		} else {
+			cursorMode.constraining = [];
+		}
+		return;
+	}
+
+	const existing = cursorMode.constraining.indexOf(hovering);
+	if (existing >= 0) {
+		cursorMode.constraining.splice(existing, 1);
+		return;
+	}
+
+	if (cursorMode.constraining.length === 1) {
+		const [first] = cursorMode.constraining;
+		if (hovering instanceof PointFigure) {
+			if (first instanceof PointFigure || first instanceof SegmentFigure) {
+				cursorMode.constraining.push(hovering);
+				return;
+			}
+		} else if (hovering instanceof SegmentFigure) {
+			if (first instanceof PointFigure || first instanceof SegmentFigure) {
+				cursorMode.constraining.push(hovering);
+				return;
+			}
+		} else {
+			cursorMode.constraining = [];
+			return;
+		}
+	} else if (cursorMode.constraining.length === 2) {
+		cursorMode.constraining = [];
+		return;
+	}
+}
+
 about.canvas.addEventListener("mousedown", e => {
 	const cursorScreen = cursorPosition(e);
 
 	if (cursorMode.tag === "lines") {
 		if (e.button === 2) {
 			// Cancel draw
-			e.preventDefault;
+			e.preventDefault();
 			cursorMode.from = null;
 		} else if (e.button === 0) {
-			e.clientX
 			if (cursorMode.from === null) {
 				// Create a new point at the cursor
 				const newPoint = chooseOrCreatePoint(cursorScreen);
@@ -396,13 +515,42 @@ about.canvas.addEventListener("mousedown", e => {
 			}
 		}
 		return false;
+	} else if (cursorMode.tag === "dimension") {
+		if (e.button === 2) {
+			// Cancel dimension
+			e.preventDefault();
+			cursorMode.constraining = [];
+		} else if (e.button === 0) {
+			dimensioningClick(cursorScreen);
+		}
+		return false;
 	}
-	// const _: never = cursorMode;
+
+	const _: never = cursorMode;
 	console.error("unhandled cursor mode", cursorMode["tag"]);
 });
 
 about.canvas.addEventListener("contextmenu", e => e.preventDefault());
 
+const modeLinesRadio = document.getElementById("mode-lines") as HTMLInputElement;
+const modeDimensionRadio = document.getElementById("mode-dimension") as HTMLInputElement;
+
+function modeChange() {
+	if (modeLinesRadio.checked) {
+		cursorMode = {
+			tag: "lines",
+			from: null,
+		};
+	} else if (modeDimensionRadio.checked) {
+		cursorMode = {
+			tag: "dimension",
+			constraining: [],
+		};
+	}
+}
+
+modeLinesRadio.addEventListener("input", modeChange);
+modeDimensionRadio.addEventListener("input", modeChange);
 
 const out = constraints.solve(
 	new Map([
