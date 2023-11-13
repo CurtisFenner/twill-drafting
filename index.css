@@ -38,9 +38,17 @@ canvas {
 	box-shadow: 0 0 15px 5px rgba(0, 0, 0, 0.125);
 }
 
-label {
+label,
+button {
 	border-radius: 5px;
 	padding: 0.25em;
 	margin-right: 0.5em;
 	box-shadow: 0 1px 4px 2px rgba(0, 0, 0, 0.125);
+	color: black;
+	background-color: transparent;
+	border: none;
+	outline: none;
+
+	font-size: 1em;
+	font-family: 'Josefin Slab';
 }

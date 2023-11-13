@@ -4,7 +4,7 @@
 <title>CAD</title>
 <body>
 <div class="ui-tray">
-	<form>
+	<form style="display: inline-block">
 		<label>
 			<input id="mode-lines" type="radio" checked name="mode"> Draw Lines
 		</label>
@@ -12,5 +12,6 @@
 			<input id="mode-dimension" type="radio" name="mode"> Dimension
 		</label>
 	</form>
+	<button id="recalculate">Recalculate</button>
 </div>
 <script src="/compiled/main.js" type="module"></script>

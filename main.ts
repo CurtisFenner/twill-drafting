@@ -84,7 +84,7 @@ class SegmentFigure {
 	}
 }
 
-class PointDistanceFigure {
+class DimensionPointDistanceFigure {
 	constructor(
 		public from: PointFigure,
 		public to: PointFigure,
@@ -101,7 +101,7 @@ class PointDistanceFigure {
 	}
 }
 
-type Figure = PointFigure | SegmentFigure | PointDistanceFigure;
+type Figure = PointFigure | SegmentFigure | DimensionPointDistanceFigure;
 
 const figures: Figure[] = [
 	new PointFigure({ x: 0, y: 0 }),
@@ -111,7 +111,7 @@ const figures: Figure[] = [
 
 figures.push(new SegmentFigure(figures[1] as PointFigure, figures[2] as PointFigure));
 
-figures.push(new PointDistanceFigure(figures[1] as PointFigure, figures[2] as PointFigure, 100, { x: -160, y: 120 }));
+figures.push(new DimensionPointDistanceFigure(figures[1] as PointFigure, figures[2] as PointFigure, 100, { x: -160, y: 120 }));
 
 let lastMouseCursor: Position = { x: 0, y: 0 };
 
@@ -129,7 +129,7 @@ function screenDistanceToFigure(figure: Figure, screenQuery: Position): number {
 		const m = screenSegment.nearestToSegment(screenQuery);
 		const out = pointDistance(m.position, screenQuery) - LINE_RADIUS;
 		return out;
-	} else if (figure instanceof PointDistanceFigure) {
+	} else if (figure instanceof DimensionPointDistanceFigure) {
 		// TODO: Include full label shape
 		const onScreen = view.toScreen(figure.labelWorldPosition());
 		return pointDistance(onScreen, screenQuery) - POINT_RADIUS * 2;
@@ -138,10 +138,11 @@ function screenDistanceToFigure(figure: Figure, screenQuery: Position): number {
 	throw new Error("unhandled figure tag: " + String(figure));
 }
 
-const BACKGROUND_COLOR = "#FFFFFF";
-const REGULAR_INK_COLOR = "#000000";
-const HOVER_COLOR = "#00AA55";
-const SKETCH_COLOR = "#BBBBBB";
+const COLOR_BACKGROUND = "#FFFFFF";
+const COLOR_REGULAR_INK = "#000000";
+const COLOR_HOVER = "#00AA55";
+const COLOR_DRAFT = "#BBBBBB";
+const COLOR_ERROR = "#EE5522";
 
 const OUTLINE_WIDTH = 2;
 const SEGMENT_WIDTH = 3.5;
@@ -210,7 +211,7 @@ function drawLengthDimension(
 	ctx.lineTo(toLabelLine.x, toLabelLine.y);
 	ctx.stroke();
 
-	ctx.fillStyle = BACKGROUND_COLOR;
+	ctx.fillStyle = COLOR_BACKGROUND;
 	const fontSize = 20;
 	ctx.font = fontSize + "px 'Josefin Slab'";
 	const textMetrics = ctx.measureText(labelText);
@@ -234,7 +235,7 @@ function rerender(ctx: CanvasRenderingContext2D, canvas: HTMLCanvasElement): voi
 		const destination = choosePoint(lastMouseCursor);
 		ctx.lineWidth = SEGMENT_WIDTH;
 		ctx.lineCap = "round";
-		ctx.strokeStyle = SKETCH_COLOR;
+		ctx.strokeStyle = COLOR_DRAFT;
 		const fromScreen = view.toScreen(cursorMode.from.position);
 		const toScreen = view.toScreen(destination.world);
 		ctx.beginPath();
@@ -251,7 +252,7 @@ function rerender(ctx: CanvasRenderingContext2D, canvas: HTMLCanvasElement): voi
 			sketchingConstraint.to.position,
 			view.toWorld(lastMouseCursor),
 			"?",
-			SKETCH_COLOR
+			COLOR_DRAFT
 		);
 	}
 
@@ -274,20 +275,20 @@ function rerender(ctx: CanvasRenderingContext2D, canvas: HTMLCanvasElement): voi
 
 	for (const figure of figures.slice().sort(compareWithHover)) {
 		let ink = figure === hovering[0]
-			? HOVER_COLOR
-			: REGULAR_INK_COLOR;
+			? COLOR_HOVER
+			: COLOR_REGULAR_INK;
 
 		if (isChoosingPoint
 			&& hovering[0] instanceof SegmentFigure
 			&& figure === hovering[1]
 			&& figure instanceof SegmentFigure) {
 			// The intersection of these two lines will be chosen.
-			ink = HOVER_COLOR;
+			ink = COLOR_HOVER;
 		}
 
 		if (figure instanceof PointFigure) {
 			const screen = view.toScreen(figure.position);
-			ctx.fillStyle = BACKGROUND_COLOR;
+			ctx.fillStyle = COLOR_BACKGROUND;
 			ctx.beginPath();
 			ctx.ellipse(screen.x, screen.y, POINT_DIAMETER / 2 + OUTLINE_WIDTH, POINT_DIAMETER / 2 + OUTLINE_WIDTH, 0, 0, 2 * Math.PI);
 			ctx.fill();
@@ -301,7 +302,7 @@ function rerender(ctx: CanvasRenderingContext2D, canvas: HTMLCanvasElement): voi
 			ctx.strokeStyle = ink;
 			ctx.lineWidth = SEGMENT_WIDTH + 2 * OUTLINE_WIDTH;
 			ctx.lineCap = "round";
-			ctx.strokeStyle = BACKGROUND_COLOR;
+			ctx.strokeStyle = COLOR_BACKGROUND;
 			ctx.beginPath();
 			ctx.moveTo(fromScreen.x, fromScreen.y);
 			ctx.lineTo(toScreen.x, toScreen.y);
@@ -309,7 +310,7 @@ function rerender(ctx: CanvasRenderingContext2D, canvas: HTMLCanvasElement): voi
 			ctx.lineWidth = SEGMENT_WIDTH;
 			ctx.strokeStyle = ink;
 			ctx.stroke();
-		} else if (figure instanceof PointDistanceFigure) {
+		} else if (figure instanceof DimensionPointDistanceFigure) {
 			drawLengthDimension(
 				ctx,
 				figure.from.position,
@@ -440,7 +441,7 @@ function placeDimensionBetweenPoints(
 		atWorld,
 		geometry.linearSum([0.5, from.position], [0.5, to.position]),
 	);
-	const dimension = new PointDistanceFigure(from, to, askedLength, relativePlacement);
+	const dimension = new DimensionPointDistanceFigure(from, to, askedLength, relativePlacement);
 	figures.push(dimension);
 	cursorMode.constraining = [];
 }
@@ -583,6 +584,43 @@ function modeChange() {
 
 modeLinesRadio.addEventListener("input", modeChange);
 modeDimensionRadio.addEventListener("input", modeChange);
+
+const buttonRecalculate = document.getElementById("recalculate") as HTMLButtonElement;
+
+buttonRecalculate.addEventListener("click", () => {
+	const pointName = new Map<PointFigure, string>();
+	const variables = new Map<string, Position>();
+	const pointByName = new Map<string, PointFigure>();
+	const cs: constraints.Constraint[] = [];
+
+	function getVariableName(pointFigure: PointFigure) {
+		if (pointName.has(pointFigure)) {
+			return pointName.get(pointFigure)!;
+		}
+		const name = "p" + pointName.size;
+		pointName.set(pointFigure, name);
+		variables.set(name, pointFigure.position);
+		pointByName.set(name, pointFigure);
+		return name;
+	}
+
+	for (const figure of figures) {
+		if (figure instanceof DimensionPointDistanceFigure) {
+			cs.push({
+				tag: "distance",
+				a: getVariableName(figure.from),
+				b: getVariableName(figure.to),
+				distance: figure.distance,
+			});
+		}
+	}
+
+	const solution = constraints.solve(variables, cs);
+	for (const [variableName, newPosition] of solution.solution) {
+		const point = pointByName.get(variableName)!;
+		point.position = newPosition;
+	}
+});
 
 const out = constraints.solve(
 	new Map([

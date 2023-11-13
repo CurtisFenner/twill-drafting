@@ -13,7 +13,7 @@ type FixedConstraint = {
 	position: geometry.Position,
 };
 
-type Constraint = DistanceConstraint | FixedConstraint;
+export type Constraint = DistanceConstraint | FixedConstraint;
 
 function constraintDependencies(constraint: Constraint): string[] {
 	if (constraint.tag === "distance") {
