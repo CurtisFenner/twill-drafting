@@ -160,7 +160,7 @@ const COLOR_REGULAR_INK = "#000000";
 const COLOR_HOVER = "#00AA55";
 const COLOR_DRAFT = "#BBBBBB";
 const COLOR_SELECTED = "#88BBFF";
-const COLOR_ERROR = "#EE5522";
+const COLOR_ERROR = "#EE4488";
 
 const OUTLINE_WIDTH = 2;
 const SEGMENT_WIDTH = 3.5;
@@ -241,8 +241,20 @@ function drawLengthDimension(
 	ctx.fillText(labelText, labelScreen.x, labelScreen.y);
 }
 
+function isDimensionInvalid(figure: Figure): boolean {
+	if (figure instanceof DimensionPointDistanceFigure) {
+		const measurement = pointDistance(figure.from.position, figure.to.position);
+		const expected = figure.distance;
+		return Math.abs(measurement - expected) >= geometry.EPSILON;
+	} else {
+		return false;
+	}
+}
+
 function rerender(ctx: CanvasRenderingContext2D, canvas: HTMLCanvasElement): void {
 	ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+	recalculateConstraints();
 
 	const hovering = getMouseHovering(lastMouseCursor);
 
@@ -292,9 +304,15 @@ function rerender(ctx: CanvasRenderingContext2D, canvas: HTMLCanvasElement): voi
 	}
 
 	for (const figure of figures.slice().sort(compareWithHover)) {
-		let ink = figure === hovering[0]
-			? COLOR_HOVER
-			: COLOR_REGULAR_INK;
+		let ink = COLOR_REGULAR_INK;
+
+		if (isDimensionInvalid(figure)) {
+			ink = COLOR_ERROR;
+		}
+
+		if (figure === hovering[0]) {
+			ink = COLOR_HOVER;
+		}
 
 		if (isChoosingPoint
 			&& hovering[0] instanceof SegmentFigure
@@ -723,9 +741,7 @@ modeDimensionRadio.addEventListener("input", modeChange);
 
 modeChange();
 
-const buttonRecalculate = document.getElementById("recalculate") as HTMLButtonElement;
-
-buttonRecalculate.addEventListener("click", () => {
+function recalculateConstraints() {
 	const pointName = new Map<PointFigure, string>();
 	const variables = new Map<string, Position>();
 	const pointByName = new Map<string, PointFigure>();
@@ -740,6 +756,14 @@ buttonRecalculate.addEventListener("click", () => {
 		variables.set(name, pointFigure.position);
 		pointByName.set(name, pointFigure);
 		return name;
+	}
+
+	// Prioritize the dragged element, so that there are no "locked" elements
+	// caused by arbitrary choices.
+	if (cursorMode.tag === "move" && cursorMode.dragging !== null) {
+		if (cursorMode.dragging.figure instanceof PointFigure) {
+			getVariableName(cursorMode.dragging.figure);
+		}
 	}
 
 	for (const figure of figures) {
@@ -758,4 +782,4 @@ buttonRecalculate.addEventListener("click", () => {
 		const point = pointByName.get(variableName)!;
 		point.position = newPosition;
 	}
-});
+}
