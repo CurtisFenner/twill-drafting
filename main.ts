@@ -118,6 +118,13 @@ class DimensionPointDistanceFigure implements Figure {
 			[1, this.relativePlacement],
 		)
 	}
+
+	edit() {
+		const askedLength = parseLengthMm(prompt("Length of segment (mm):", this.distance.toString()));
+		if (askedLength) {
+			this.distance = askedLength;
+		}
+	}
 }
 
 const figures: Figure[] = [
@@ -378,9 +385,20 @@ function cursorPosition(e: MouseEvent): Position {
 
 type CursorMode = MoveMode | LineMode | DimensionMode;
 
+const MOUSE_DRAG_MINIMUM_SCREEN_DISTANCE = 3;
+
 type MoveMode = {
 	tag: "move",
+	doubleClick: boolean,
 	selected: Figure | null,
+
+	/**
+	 *
+	 * Don't consider the mouse to be dragging until it has moved at least
+	 * DRAG_MINIMUM_DISTANCE away from this.
+	 */
+	screenFence: Position | null,
+
 	dragging: null | {
 		tag: "point",
 		figure: PointFigure,
@@ -585,6 +603,16 @@ function dimensioningClick(cursorScreen: Position): void {
 
 function moveDragged(cursorScreen: Position) {
 	if (cursorMode.tag === "move" && cursorMode.dragging !== null) {
+		if (cursorMode.screenFence !== null) {
+			const screenMotion = geometry.pointDistance(cursorScreen, cursorMode.screenFence);
+			if (screenMotion < MOUSE_DRAG_MINIMUM_SCREEN_DISTANCE) {
+				return;
+			} else {
+				// A drag has started, cancel the fence
+				cursorMode.screenFence = null;
+			}
+		}
+
 		const mouseMotion = geometry.pointSubtract(view.toWorld(cursorScreen), cursorMode.dragging.originalCursorWorld);
 		if (cursorMode.dragging.tag === "point") {
 			cursorMode.dragging.figure.position = geometry.linearSum(
@@ -635,6 +663,17 @@ about.canvas.addEventListener("mouseup", e => {
 	const cursorScreen = cursorPosition(e);
 	if (cursorMode.tag === "move") {
 		moveDragged(cursorScreen);
+
+		if (cursorMode.doubleClick) {
+			if (cursorMode.screenFence !== null) {
+				if (cursorMode.dragging !== null) {
+					if (cursorMode.dragging.figure instanceof DimensionPointDistanceFigure) {
+						cursorMode.dragging.figure.edit();
+					}
+				}
+			}
+		}
+
 		cursorMode.dragging = null;
 	}
 });
@@ -647,7 +686,11 @@ about.canvas.addEventListener("mousedown", e => {
 			// Cancel selection
 			cursorMode.selected = null;
 		} else if (e.button === 0) {
-			const hovering = getMouseHovering(cursorScreen)[0];
+			const hovering: Figure | undefined = getMouseHovering(cursorScreen)[0];
+
+			cursorMode.doubleClick = cursorMode.selected === hovering && hovering !== undefined;
+			cursorMode.screenFence = cursorScreen;
+
 			cursorMode.selected = hovering || null;
 
 			if (hovering instanceof PointFigure) {
@@ -715,6 +758,8 @@ function modeChange() {
 	if (modeMoveRadio.checked) {
 		cursorMode = {
 			tag: "move",
+			doubleClick: false,
+			screenFence: null,
 			selected: null,
 			dragging: null,
 		};
