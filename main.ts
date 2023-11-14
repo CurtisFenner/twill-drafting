@@ -972,6 +972,19 @@ function recalculateConstraints() {
 				b: getVariableName(figure.to),
 				distance: figure.distance,
 			});
+		} else if (figure instanceof DimensionSegmentAngleFigure) {
+			cs.push({
+				tag: "angle",
+				a: {
+					p0: getVariableName(figure.from.from),
+					p1: getVariableName(figure.from.to),
+				},
+				b: {
+					p0: getVariableName(figure.to.from),
+					p1: getVariableName(figure.to.to),
+				},
+				angleRadians: figure.angleDegrees * Math.PI / 180,
+			});
 		}
 	}
 

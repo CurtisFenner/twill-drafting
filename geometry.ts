@@ -139,6 +139,11 @@ export type Circle = {
 	center: Position,
 };
 
+export type Line = {
+	from: Position,
+	to: Position,
+};
+
 export function circleCircleIntersection(a: Circle, b: Circle, epsilon: number = EPSILON): {
 	tag: "points",
 	points: Position[],
