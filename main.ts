@@ -65,16 +65,31 @@ class View {
 const about = createFullscreenCanvas(document.body, rerender);
 let view: View = new View(about.canvas, { x: 0, y: 0 }, 1);
 
-class PointFigure {
+interface Figure {
+	/**
+	 * If any of these are deleted, delete this object.
+	 */
+	dependsOn(): Figure[];
+}
+
+class PointFigure implements Figure {
 	constructor(public position: Position) { }
+
+	dependsOn(): Figure[] {
+		return [];
+	}
 };
 
 
-class SegmentFigure {
+class SegmentFigure implements Figure {
 	constructor(
 		public from: PointFigure,
 		public to: PointFigure,
 	) { }
+
+	dependsOn(): Figure[] {
+		return [this.from, this.to];
+	}
 
 	nearest(query: Position): Position {
 		return geometry.projectToLine({
@@ -84,13 +99,17 @@ class SegmentFigure {
 	}
 }
 
-class DimensionPointDistanceFigure {
+class DimensionPointDistanceFigure implements Figure {
 	constructor(
 		public from: PointFigure,
 		public to: PointFigure,
 		public distance: number,
 		public relativePlacement: Position,
 	) { }
+
+	dependsOn(): Figure[] {
+		return [this.from, this.to];
+	}
 
 	labelWorldPosition() {
 		return geometry.linearSum(
@@ -101,8 +120,6 @@ class DimensionPointDistanceFigure {
 	}
 }
 
-type Figure = PointFigure | SegmentFigure | DimensionPointDistanceFigure;
-
 const figures: Figure[] = [
 	new PointFigure({ x: 0, y: 0 }),
 	new PointFigure({ x: 100, y: 0 }),
@@ -111,7 +128,7 @@ const figures: Figure[] = [
 
 figures.push(new SegmentFigure(figures[1] as PointFigure, figures[2] as PointFigure));
 
-figures.push(new DimensionPointDistanceFigure(figures[1] as PointFigure, figures[2] as PointFigure, 100, { x: -160, y: 120 }));
+figures.push(new DimensionPointDistanceFigure(figures[1] as PointFigure, figures[2] as PointFigure, 100, { x: 160, y: -120 }));
 
 let lastMouseCursor: Position = { x: 0, y: 0 };
 
@@ -134,14 +151,15 @@ function screenDistanceToFigure(figure: Figure, screenQuery: Position): number {
 		const onScreen = view.toScreen(figure.labelWorldPosition());
 		return pointDistance(onScreen, screenQuery) - POINT_RADIUS * 2;
 	}
-	const _: never = figure;
-	throw new Error("unhandled figure tag: " + String(figure));
+
+	throw new Error("unhandled figure: " + String(figure));
 }
 
 const COLOR_BACKGROUND = "#FFFFFF";
 const COLOR_REGULAR_INK = "#000000";
 const COLOR_HOVER = "#00AA55";
 const COLOR_DRAFT = "#BBBBBB";
+const COLOR_SELECTED = "#88BBFF";
 const COLOR_ERROR = "#EE5522";
 
 const OUTLINE_WIDTH = 2;
@@ -286,6 +304,10 @@ function rerender(ctx: CanvasRenderingContext2D, canvas: HTMLCanvasElement): voi
 			ink = COLOR_HOVER;
 		}
 
+		if (cursorMode.tag === "move" && cursorMode.selected === figure) {
+			ink = COLOR_SELECTED;
+		}
+
 		if (figure instanceof PointFigure) {
 			const screen = view.toScreen(figure.position);
 			ctx.fillStyle = COLOR_BACKGROUND;
@@ -320,7 +342,6 @@ function rerender(ctx: CanvasRenderingContext2D, canvas: HTMLCanvasElement): voi
 				ink,
 			);
 		} else {
-			const _: never = figure;
 			console.error("rerender: unhandled figure", figure);
 		}
 	}
@@ -341,6 +362,7 @@ type CursorMode = MoveMode | LineMode | DimensionMode;
 
 type MoveMode = {
 	tag: "move",
+	selected: Figure | null,
 	dragging: null | {
 		tag: "point",
 		figure: PointFigure,
@@ -560,6 +582,37 @@ function moveDragged(cursorScreen: Position) {
 	}
 }
 
+function inPlaceFilter<T>(array: T[], predicate: (element: T) => boolean): void {
+	let write = 0;
+	for (let i = 0; i < array.length; i++) {
+		if (predicate(array[i])) {
+			array[write] = array[i];
+			write += 1;
+		}
+	}
+	array.length = write;
+}
+
+function deleteFigure(figure: Figure) {
+	const dependers = new Map<Figure, Figure[]>();
+	for (const figure of figures) {
+		for (const dependency of figure.dependsOn()) {
+			const array = dependers.get(dependency) || [];
+			array.push(figure);
+			dependers.set(dependency, array);
+		}
+	}
+
+	const queue = new Set([figure]);
+	for (const element of queue) {
+		for (const depender of dependers.get(element) || []) {
+			queue.add(depender);
+		}
+	}
+
+	inPlaceFilter(figures, f => !queue.has(f));
+}
+
 about.canvas.addEventListener("mouseup", e => {
 	const cursorScreen = cursorPosition(e);
 	if (cursorMode.tag === "move") {
@@ -572,21 +625,28 @@ about.canvas.addEventListener("mousedown", e => {
 	const cursorScreen = cursorPosition(e);
 
 	if (cursorMode.tag === "move") {
-		const hovering = getMouseHovering(cursorScreen)[0];
-		if (hovering instanceof PointFigure) {
-			cursorMode.dragging = {
-				tag: "point",
-				figure: hovering,
-				originalCursorWorld: view.toWorld(cursorScreen),
-				originalPointWorld: hovering.position,
-			};
-		} else if (hovering instanceof DimensionPointDistanceFigure) {
-			cursorMode.dragging = {
-				tag: "dimension-points",
-				figure: hovering,
-				originalCursorWorld: view.toWorld(cursorScreen),
-				originalLabelOffset: hovering.relativePlacement,
-			};
+		if (e.button === 2) {
+			// Cancel selection
+			cursorMode.selected = null;
+		} else if (e.button === 0) {
+			const hovering = getMouseHovering(cursorScreen)[0];
+			cursorMode.selected = hovering || null;
+
+			if (hovering instanceof PointFigure) {
+				cursorMode.dragging = {
+					tag: "point",
+					figure: hovering,
+					originalCursorWorld: view.toWorld(cursorScreen),
+					originalPointWorld: hovering.position,
+				};
+			} else if (hovering instanceof DimensionPointDistanceFigure) {
+				cursorMode.dragging = {
+					tag: "dimension-points",
+					figure: hovering,
+					originalCursorWorld: view.toWorld(cursorScreen),
+					originalLabelOffset: hovering.relativePlacement,
+				};
+			}
 		}
 		return false;
 	} else if (cursorMode.tag === "lines") {
@@ -625,10 +685,19 @@ about.canvas.addEventListener("mousedown", e => {
 
 about.canvas.addEventListener("contextmenu", e => e.preventDefault());
 
+document.addEventListener("keydown", e => {
+	if (e.key === 'Delete' || e.key === 'Backspace') {
+		if (cursorMode.tag === "move" && cursorMode.selected !== null) {
+			deleteFigure(cursorMode.selected);
+		}
+	}
+});
+
 function modeChange() {
 	if (modeMoveRadio.checked) {
 		cursorMode = {
 			tag: "move",
+			selected: null,
 			dragging: null,
 		};
 	} else if (modeLinesRadio.checked) {
@@ -690,37 +759,3 @@ buttonRecalculate.addEventListener("click", () => {
 		point.position = newPosition;
 	}
 });
-
-const out = constraints.solve(
-	new Map([
-		["a", { x: 100, y: 100 }],
-		["b", { x: 200, y: 300 }],
-		["c", { x: 400, y: 900 }],
-	]),
-	[
-		{
-			tag: "fixed",
-			a: "a",
-			position: { x: 50, y: 50 },
-		},
-		{
-			tag: "distance",
-			a: "a",
-			b: "b",
-			distance: 50,
-		},
-		{
-			tag: "distance",
-			a: "a",
-			b: "c",
-			distance: 50,
-		},
-		{
-			tag: "distance",
-			a: "b",
-			b: "c",
-			distance: 50,
-		},
-	]
-)
-console.log(out);
