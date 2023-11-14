@@ -36,6 +36,10 @@ function createFullscreenCanvas(parent: HTMLElement, rerender: (ctx: CanvasRende
 	};
 }
 
+function sortedBy<T>(array: T[], f: (element: T) => number): T[] {
+	return [...array].sort((a, b) => f(a) - f(b));
+}
+
 class View {
 	constructor(
 		public canvas: HTMLCanvasElement,
@@ -97,6 +101,13 @@ class SegmentFigure implements Figure {
 			to: this.to.position
 		}, query);
 	}
+
+	midpoint(): Position {
+		return geometry.linearSum(
+			[0.5, this.from.position],
+			[0.5, this.to.position],
+		);
+	}
 }
 
 class DimensionPointDistanceFigure implements Figure {
@@ -127,15 +138,37 @@ class DimensionPointDistanceFigure implements Figure {
 	}
 }
 
+class DimensionSegmentAngleFigure implements Figure {
+	constructor(
+		public from: SegmentFigure,
+		public to: SegmentFigure,
+		public angleDegrees: number,
+		public relativePlacement: Position,
+	) { }
+
+	dependsOn(): Figure[] {
+		return [this.from, this.to];
+	}
+
+	labelWorldPosition() {
+		return geometry.linearSum(
+			[0.5, this.from.midpoint()],
+			[0.5, this.to.midpoint()],
+			[1, this.relativePlacement],
+		);
+	}
+}
+
 const figures: Figure[] = [
 	new PointFigure({ x: 0, y: 0 }),
 	new PointFigure({ x: 100, y: 0 }),
-	new PointFigure({ x: 0, y: 200 }),
+	new PointFigure({ x: 0, y: 50 }),
+	new PointFigure({ x: 200, y: 250 }),
 ];
 
-figures.push(new SegmentFigure(figures[1] as PointFigure, figures[2] as PointFigure));
-
-figures.push(new DimensionPointDistanceFigure(figures[1] as PointFigure, figures[2] as PointFigure, 100, { x: 160, y: -120 }));
+figures.push(new SegmentFigure(figures[0] as PointFigure, figures[1] as PointFigure));
+figures.push(new SegmentFigure(figures[2] as PointFigure, figures[3] as PointFigure));
+figures.push(new DimensionSegmentAngleFigure(figures[4] as SegmentFigure, figures[5] as SegmentFigure, 45, { x: 150, y: 0 }));
 
 let lastMouseCursor: Position = { x: 0, y: 0 };
 
@@ -157,9 +190,12 @@ function screenDistanceToFigure(figure: Figure, screenQuery: Position): number {
 		// TODO: Include full label shape
 		const onScreen = view.toScreen(figure.labelWorldPosition());
 		return pointDistance(onScreen, screenQuery) - POINT_RADIUS * 2;
+	} else if (figure instanceof DimensionSegmentAngleFigure) {
+		// TODO:
+		return 1000;
 	}
 
-	throw new Error("unhandled figure: " + String(figure));
+	throw new Error("unhandled figure: " + String(figure) + " / " + Object.getPrototypeOf(figure)?.constructor?.name);
 }
 
 const COLOR_BACKGROUND = "#FFFFFF";
@@ -241,6 +277,113 @@ function drawLengthDimension(
 	ctx.font = fontSize + "px 'Josefin Slab'";
 	const textMetrics = ctx.measureText(labelText);
 	ctx.fillRect(labelScreen.x - textMetrics.width / 2 - 4, labelScreen.y - fontSize / 2 - 4, textMetrics.width + 9, fontSize + 9);
+
+	ctx.fillStyle = ink;
+	ctx.textAlign = "center";
+	ctx.textBaseline = "middle";
+	ctx.fillText(labelText, labelScreen.x, labelScreen.y);
+}
+
+function drawAngleDimension(
+	ctx: CanvasRenderingContext2D,
+	fromWorld: { from: Position, to: Position },
+	toWorld: { from: Position, to: Position },
+	labelWorld: Position,
+	labelText: string,
+	ink: string,
+	kind: "acute" | "obtuse",
+) {
+	// Find the center of the arc (i.e., where the lines intersect)
+	const centerWorld = geometry.lineIntersection(fromWorld, toWorld);
+	let fromArrow: Position;
+	let toArrow: Position;
+
+	ctx.strokeStyle = ink;
+	ctx.lineWidth = LABELING_WIDTH;
+	ctx.beginPath();
+
+	if (centerWorld === null) {
+		// The lines are parallel
+		fromArrow = new Segment(fromWorld.from, fromWorld.to)
+			.nearestToLine(labelWorld)
+			.position;
+		toArrow = new Segment(toWorld.from, toWorld.to)
+			.nearestToLine(labelWorld)
+			.position;
+
+		const fromArrowScreen = view.toScreen(fromArrow);
+		const toArrowScreen = view.toScreen(toArrow);
+		ctx.moveTo(fromArrowScreen.x, fromArrowScreen.y);
+		ctx.lineTo(toArrowScreen.x, toArrowScreen.y);
+	} else {
+		const circle: geometry.Circle = {
+			center: centerWorld,
+			radius: pointDistance(centerWorld, labelWorld),
+		};
+
+		const centerScreen = view.toScreen(centerWorld);
+		const radiusScreen = view.pixelsPerMilli * circle.radius;
+
+		const fromHits = geometry.circleLineIntersection(circle, fromWorld) as Position[];
+		const toHits = geometry.circleLineIntersection(circle, toWorld) as Position[];
+
+		// The hits divide the circle into 4 regions.
+		const angleDivisions = [...fromHits, ...toHits].map(point => {
+			const relative = geometry.pointSubtract(point, centerWorld);
+			return Math.atan2(relative.y, relative.x);
+		}).sort((a, b) => a - b);
+
+		const acutes = [];
+		const obtuses = [];
+		for (let i = 0; i < angleDivisions.length; i++) {
+			const ta = angleDivisions[i];
+			let tb = angleDivisions[(i + 1) % angleDivisions.length];
+			if (tb < ta) {
+				tb += Math.PI * 2;
+			}
+			if (tb - ta <= Math.PI / 2) {
+				// This is an acute arc
+				acutes.push([ta, tb]);
+			} else {
+				// This is an obtuse arc
+				obtuses.push([ta, tb]);
+			}
+		}
+
+		let startAngle;
+		let endAngle;
+
+		const arcs = (kind === "acute" ? acutes : obtuses)
+			.map(([t0, t1]) => {
+				const v0 = { x: Math.cos(t0), y: Math.sin(t0) };
+				const v1 = { x: Math.cos(t1), y: Math.sin(t1) };
+				return {
+					t0, t1,
+					mid: geometry.pointUnit(geometry.linearSum([1, v0], [1, v1])),
+				};
+			});
+
+		const arc = sortedBy(arcs, arc => {
+			return -geometry.pointDot(arc.mid, geometry.pointSubtract(labelWorld, centerWorld));
+		})[0];
+		startAngle = arc.t0;
+		endAngle = arc.t1;
+
+		ctx.ellipse(centerScreen.x, centerScreen.y, radiusScreen, radiusScreen, 0, startAngle, endAngle, false);
+	}
+	ctx.stroke();
+
+	const labelScreen = view.toScreen(labelWorld);
+	ctx.fillStyle = COLOR_BACKGROUND;
+	const fontSize = 20;
+	ctx.font = fontSize + "px 'Josefin Slab'";
+	const textMetrics = ctx.measureText(labelText);
+	ctx.fillRect(
+		labelScreen.x - textMetrics.width / 2 - 4,
+		labelScreen.y - fontSize / 2 - 4,
+		textMetrics.width + 9,
+		fontSize + 9
+	);
 
 	ctx.fillStyle = ink;
 	ctx.textAlign = "center";
@@ -365,6 +508,16 @@ function rerender(ctx: CanvasRenderingContext2D, canvas: HTMLCanvasElement): voi
 				figure.labelWorldPosition(),
 				figure.distance.toString(),
 				ink,
+			);
+		} else if (figure instanceof DimensionSegmentAngleFigure) {
+			drawAngleDimension(
+				ctx,
+				{ from: figure.from.from.position, to: figure.from.to.position },
+				{ from: figure.to.from.position, to: figure.to.to.position },
+				figure.labelWorldPosition(),
+				figure.angleDegrees.toString() + "°",
+				ink,
+				"acute",
 			);
 		} else {
 			console.error("rerender: unhandled figure", figure);

@@ -106,6 +106,25 @@ export function pointMagnitude(a: Position): number {
 	return Math.sqrt(a.x ** 2 + a.y ** 2);
 }
 
+export function lineIntersection(
+	a: { from: Position, to: Position },
+	b: { from: Position, to: Position },
+): null | Position {
+	const da = pointUnit(pointSubtract(a.to, a.from));
+	const db = pointUnit(pointSubtract(b.to, b.from));
+
+	const na = { x: da.y, y: -da.x };
+
+	const numerator = pointDot(pointSubtract(b.from, a.from), na);
+	const denominator = pointDot(db, na);
+	if (denominator === 0) {
+		return null;
+	}
+
+	const t = numerator / denominator;
+	return linearSum([1, b.from], [-t, db]);
+}
+
 export function linearSum(...vs: [number, Position][]): Position {
 	const out = { x: 0, y: 0 };
 	for (const [c, v] of vs) {
@@ -170,4 +189,42 @@ export function projectToLine(
 	const amount = pointDot(direction, relative);
 
 	return linearSum([1, line.from], [amount, direction]);
+}
+
+export function circleLineIntersection(
+	circle: Circle,
+	line: { from: Position, to: Position },
+): [] | [Position, Position] {
+	const nearest = new Segment(line.from, line.to).nearestToLine(circle.center).position;
+	const orthogonalOffset = pointSubtract(nearest, circle.center);
+	const orthgonalDistance = pointMagnitude(orthogonalOffset);
+	const lineDirection = pointUnit(pointSubtract(line.to, line.from));
+	if (orthgonalDistance === 0) {
+		return [
+			linearSum(
+				[1, circle.center],
+				[circle.radius, lineDirection],
+			),
+			linearSum(
+				[1, circle.center],
+				[-circle.radius, lineDirection],
+			),
+		];
+	}
+
+	const radical = circle.radius ** 2 - orthgonalDistance ** 2;
+	if (radical < 0) {
+		return [];
+	}
+	const dx = Math.sqrt(radical);
+	return [
+		linearSum(
+			[1, nearest],
+			[dx, lineDirection],
+		),
+		linearSum(
+			[1, nearest],
+			[-dx, lineDirection],
+		),
+	];
 }
