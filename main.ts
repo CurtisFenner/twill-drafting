@@ -191,8 +191,9 @@ function screenDistanceToFigure(figure: Figure, screenQuery: Position): number {
 		const onScreen = view.toScreen(figure.labelWorldPosition());
 		return pointDistance(onScreen, screenQuery) - POINT_RADIUS * 2;
 	} else if (figure instanceof DimensionSegmentAngleFigure) {
-		// TODO:
-		return 1000;
+		// TODO: Include full label shape
+		const onScreen = view.toScreen(figure.labelWorldPosition());
+		return pointDistance(onScreen, screenQuery) - POINT_RADIUS * 2;
 	}
 
 	throw new Error("unhandled figure: " + String(figure) + " / " + Object.getPrototypeOf(figure)?.constructor?.name);
@@ -396,6 +397,12 @@ function isDimensionInvalid(figure: Figure): boolean {
 		const measurement = pointDistance(figure.from.position, figure.to.position);
 		const expected = figure.distance;
 		return Math.abs(measurement - expected) >= geometry.EPSILON;
+	} else if (figure instanceof DimensionSegmentAngleFigure) {
+		const v1 = geometry.pointSubtract(figure.from.to.position, figure.from.from.position);
+		const v2 = geometry.pointSubtract(figure.to.to.position, figure.to.from.position);
+		const dot = geometry.pointDot(geometry.pointUnit(v1), geometry.pointUnit(v2));
+		const expectation = Math.cos(figure.angleDegrees * Math.PI / 180);
+		return Math.abs(Math.abs(dot) - Math.abs(expectation)) >= geometry.EPSILON;
 	} else {
 		return false;
 	}
@@ -558,8 +565,8 @@ type MoveMode = {
 		originalPointWorld: Position,
 		originalCursorWorld: Position,
 	} | {
-		tag: "dimension-points",
-		figure: DimensionPointDistanceFigure,
+		tag: "dimension",
+		figure: DimensionPointDistanceFigure | DimensionSegmentAngleFigure,
 		originalLabelOffset: Position,
 		originalCursorWorld: Position,
 	},
@@ -772,7 +779,7 @@ function moveDragged(cursorScreen: Position) {
 				[1, cursorMode.dragging.originalPointWorld],
 				[1, mouseMotion],
 			);
-		} else if (cursorMode.dragging.tag === "dimension-points") {
+		} else if (cursorMode.dragging.tag === "dimension") {
 			cursorMode.dragging.figure.relativePlacement = geometry.linearSum(
 				[1, cursorMode.dragging.originalLabelOffset],
 				[1, mouseMotion],
@@ -853,9 +860,10 @@ about.canvas.addEventListener("mousedown", e => {
 					originalCursorWorld: view.toWorld(cursorScreen),
 					originalPointWorld: hovering.position,
 				};
-			} else if (hovering instanceof DimensionPointDistanceFigure) {
+			} else if (hovering instanceof DimensionPointDistanceFigure
+				|| hovering instanceof DimensionSegmentAngleFigure) {
 				cursorMode.dragging = {
-					tag: "dimension-points",
+					tag: "dimension",
 					figure: hovering,
 					originalCursorWorld: view.toWorld(cursorScreen),
 					originalLabelOffset: hovering.relativePlacement,
