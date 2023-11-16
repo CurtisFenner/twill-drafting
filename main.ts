@@ -432,15 +432,30 @@ function rerender(ctx: CanvasRenderingContext2D, canvas: HTMLCanvasElement): voi
 	}
 
 	const sketchingConstraint = getConstraining();
-	if (sketchingConstraint !== null && sketchingConstraint.tag === "point-distance") {
-		drawLengthDimension(
-			ctx,
-			sketchingConstraint.from.position,
-			sketchingConstraint.to.position,
-			view.toWorld(lastMouseCursor),
-			"?",
-			COLOR_DRAFT
-		);
+	if (sketchingConstraint !== null) {
+		if (sketchingConstraint.tag === "point-distance") {
+			drawLengthDimension(
+				ctx,
+				sketchingConstraint.from.position,
+				sketchingConstraint.to.position,
+				view.toWorld(lastMouseCursor),
+				"?",
+				COLOR_DRAFT
+			);
+		} else if (sketchingConstraint.tag === "segment-angle") {
+			drawAngleDimension(
+				ctx,
+				{ from: sketchingConstraint.from.from.position, to: sketchingConstraint.from.to.position },
+				{ from: sketchingConstraint.to.from.position, to: sketchingConstraint.to.to.position },
+				view.toWorld(lastMouseCursor),
+				"?°",
+				COLOR_DRAFT,
+				"acute"
+			);
+		} else {
+			const _: never = sketchingConstraint;
+			throw new Error("unhandled sketchingConstraint.tag: " + sketchingConstraint["tag"]);
+		}
 	}
 
 	function compareWithHover(a: Figure, b: Figure): number {
@@ -524,7 +539,7 @@ function rerender(ctx: CanvasRenderingContext2D, canvas: HTMLCanvasElement): voi
 				figure.labelWorldPosition(),
 				figure.angleDegrees.toString() + "°",
 				ink,
-				"acute",
+				figure.angleDegrees >= 90 ? "obtuse" : "acute",
 			);
 		} else {
 			console.error("rerender: unhandled figure", figure);
@@ -681,7 +696,38 @@ function placeDimensionBetweenPoints(
 	cursorMode.constraining = [];
 }
 
-function getConstraining(): null | { tag: "point-distance", from: PointFigure, to: PointFigure } {
+function placeAngleDimensionBetweenSegments(
+	a: SegmentFigure,
+	b: SegmentFigure,
+	atWorld: Position,
+) {
+	if (cursorMode.tag !== "dimension") {
+		throw new Error("placeDimensionBetweenPoints: invalid cursorMode");
+	}
+
+	const va = geometry.pointSubtract(a.to.position, a.from.position);
+	const vb = geometry.pointSubtract(b.to.position, b.from.position);
+	const dot = Math.abs(geometry.pointDot(geometry.pointUnit(va), geometry.pointUnit(vb)));
+	const angle = Math.acos(dot) * 180 / Math.PI;
+
+	const askedLength = parseLengthMm(prompt("Measure of angle (deg):", angle.toFixed(0)));
+	if (askedLength === null || askedLength < 0 || askedLength >= 360) {
+		// Do nothing.
+		return;
+	}
+
+	const relativePlacement = geometry.pointSubtract(
+		atWorld,
+		geometry.linearSum([0.5, a.midpoint()], [0.5, b.midpoint()]),
+	);
+	const dimension = new DimensionSegmentAngleFigure(a, b, askedLength, relativePlacement);
+	figures.push(dimension);
+	cursorMode.constraining = [];
+}
+
+function getConstraining(): null
+	| { tag: "point-distance", from: PointFigure, to: PointFigure }
+	| { tag: "segment-angle", from: SegmentFigure, to: SegmentFigure } {
 	if (cursorMode.tag !== "dimension") {
 		return null;
 	}
@@ -695,6 +741,9 @@ function getConstraining(): null | { tag: "point-distance", from: PointFigure, t
 		const [a, b] = cursorMode.constraining;
 		if (a instanceof PointFigure && b instanceof PointFigure) {
 			return { tag: "point-distance", from: a, to: b };
+		} else if (a instanceof SegmentFigure && b instanceof SegmentFigure) {
+			// TODO: When exactly parallel, change to distance constraint
+			return { tag: "segment-angle", from: a, to: b };
 		}
 	}
 
@@ -727,6 +776,11 @@ function dimensioningClick(cursorScreen: Position): void {
 		if (constraining !== null) {
 			if (constraining.tag === "point-distance") {
 				placeDimensionBetweenPoints(constraining.from, constraining.to, view.toWorld(cursorScreen));
+			} else if (constraining.tag === "segment-angle") {
+				placeAngleDimensionBetweenSegments(constraining.from, constraining.to, view.toWorld(cursorScreen));
+			} else {
+				const _: never = constraining;
+				throw new Error("dimensioningClick: unhandled constraining.tag: " + constraining["tag"]);
 			}
 		}
 		cursorMode.constraining = [];

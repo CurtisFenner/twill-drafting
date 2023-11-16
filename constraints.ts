@@ -334,27 +334,71 @@ function solveLocal(
 			const otherPoint = myLine.p0 === variable
 				? myLine.p1
 				: myLine.p0;
-			// Construct two rotated copies of otherLine, through otherPoint
-			const otherLineDirection = geometry.pointSubtract(solution.get(otherLine.p1)!, solution.get(otherLine.p0)!);
-			const otherLineRadians = Math.atan2(otherLineDirection.y, otherLineDirection.x);
-			const anglePositive = otherLineRadians + c.angleRadians;
-			const angleNegative = otherLineRadians - c.angleRadians;
-			const directionPositive = { x: Math.cos(anglePositive), y: Math.sin(anglePositive) };
-			const directionNegative = { x: Math.cos(angleNegative), y: Math.sin(angleNegative) };
 
-			const otherPointPosition = solution.get(otherPoint)!;
-			const lines: geometry.Line[] = [
-				{
-					from: otherPointPosition,
-					to: geometry.linearSum([1, otherPointPosition], [1, directionPositive]),
-				},
-				{
-					from: otherPointPosition,
-					to: geometry.linearSum([1, otherPointPosition], [1, directionNegative]),
-				},
-			];
+			if (otherLine.p0 === variable || otherLine.p1 === variable) {
+				// variable point must lie on a circle defined by the
+				// Inscribed Angle Theorem
+				const angleFirst = solution.get(myLine.p0) || solution.get(myLine.p1);
+				if (angleFirst === undefined) throw new Error("angleFirst");
+				const angleSecond = solution.get(otherLine.p0) || solution.get(otherLine.p1);
+				if (angleSecond === undefined) throw new Error("angleSecond");
 
-			gamut = gamutLinesIntersection(gamut, lines);
+				const isoscelesBase = geometry.pointDistance(angleFirst, angleSecond);
+				const isoscelesHeight = (isoscelesBase / 2) / Math.tan(c.angleRadians);
+				const direction = geometry.pointUnit(geometry.pointSubtract(angleSecond, angleFirst));
+				if (!isFinite(direction.x)) return gamut;
+
+				const perpendicular = { x: -direction.y, y: direction.x };
+				const centerPositive = geometry.linearSum(
+					[0.5, angleFirst],
+					[0.5, angleSecond],
+					[isoscelesHeight, perpendicular],
+				);
+				const centerNegative = geometry.linearSum(
+					[0.5, angleFirst],
+					[0.5, angleSecond],
+					[-isoscelesHeight, perpendicular],
+				);
+				const radius = geometry.pointDistance(centerPositive, angleFirst);
+				gamut = {
+					tag: "union",
+					gamuts: [
+						gamutCircleIntersection(gamut, { center: centerNegative, radius }),
+						gamutCircleIntersection(gamut, { center: centerPositive, radius }),
+					],
+				};
+			} else {
+				// Construct two rotated copies of otherLine, through otherPoint
+				const p1Solution = solution.get(otherLine.p1);
+				const p0Solution = solution.get(otherLine.p0);
+				if (p0Solution === undefined || p1Solution === undefined) {
+					console.error(solution);
+					console.error("angleConstraint:", c);
+					console.error("upon", variable);
+					throw new Error("p0Solution or p1Solution is undefined; otherLine: " + JSON.stringify(otherLine));
+				}
+
+				const otherLineDirection = geometry.pointSubtract(p1Solution, p0Solution);
+				const otherLineRadians = Math.atan2(otherLineDirection.y, otherLineDirection.x);
+				const anglePositive = otherLineRadians + c.angleRadians;
+				const angleNegative = otherLineRadians - c.angleRadians;
+				const directionPositive = { x: Math.cos(anglePositive), y: Math.sin(anglePositive) };
+				const directionNegative = { x: Math.cos(angleNegative), y: Math.sin(angleNegative) };
+
+				const otherPointPosition = solution.get(otherPoint)!;
+				const lines: geometry.Line[] = [
+					{
+						from: otherPointPosition,
+						to: geometry.linearSum([1, otherPointPosition], [1, directionPositive]),
+					},
+					{
+						from: otherPointPosition,
+						to: geometry.linearSum([1, otherPointPosition], [1, directionNegative]),
+					},
+				];
+
+				gamut = gamutLinesIntersection(gamut, lines);
+			}
 		}
 	}
 
