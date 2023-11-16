@@ -7,6 +7,13 @@ type DistanceConstraint = {
 	distance: number,
 };
 
+type PointSegmentDistanceConstraint = {
+	tag: "segment-distance",
+	a: string,
+	b: { p0: string, p1: string },
+	distance: number,
+};
+
 type FixedConstraint = {
 	tag: "fixed",
 	a: string,
@@ -20,7 +27,7 @@ type AngleContraint = {
 	angleRadians: number,
 };
 
-export type Constraint = DistanceConstraint | FixedConstraint | AngleContraint;
+export type Constraint = DistanceConstraint | FixedConstraint | AngleContraint | PointSegmentDistanceConstraint;
 
 function constraintDependencies(constraint: Constraint): string[] {
 	if (constraint.tag === "distance") {
@@ -31,6 +38,12 @@ function constraintDependencies(constraint: Constraint): string[] {
 		return [
 			constraint.a.p0,
 			constraint.a.p1,
+			constraint.b.p0,
+			constraint.b.p1,
+		];
+	} else if (constraint.tag === "segment-distance") {
+		return [
+			constraint.a,
 			constraint.b.p0,
 			constraint.b.p1,
 		];
@@ -398,6 +411,48 @@ function solveLocal(
 				];
 
 				gamut = gamutLinesIntersection(gamut, lines);
+			}
+		} else if (c.tag === "segment-distance") {
+			if (c.a === c.b.p0 || c.a === c.b.p1) {
+				return gamut;
+			} else if (variable === c.a) {
+				// variable lies on one of the lines offset from b
+				throw new Error("TODO!");
+			} else {
+				// The b_T lies on one of the lines that makes a theta angle
+				// with (b_t, a).
+				const a = solution.get(c.a)!;
+				const segmentFixed = solution.get(variable === c.b.p0 ? c.b.p1 : c.b.p0)!;
+				const theta = Math.asin(c.distance / geometry.pointDistance(a, segmentFixed));
+				if (!isFinite(theta) || theta === 0) {
+					return gamut;
+				}
+
+				const toA = geometry.pointUnit(geometry.pointSubtract(a, segmentFixed));
+				if (!isFinite(toA.x)) {
+					return gamut;
+				}
+				const perpendicularA = { x: -toA.y, y: toA.x };
+
+				const lines: geometry.Line[] = [
+					{
+						from: segmentFixed,
+						to: geometry.linearSum(
+							[1, segmentFixed],
+							[1, toA],
+							[Math.tan(theta), perpendicularA],
+						),
+					},
+					{
+						from: segmentFixed,
+						to: geometry.linearSum(
+							[1, segmentFixed],
+							[1, toA],
+							[-Math.tan(theta), perpendicularA],
+						),
+					},
+				];
+				gamut = gamutLinesIntersection(gamut, lines, geometry.EPSILON);
 			}
 		}
 	}
