@@ -2,6 +2,7 @@ import { Position, Segment, pointDistance } from "./geometry.js";
 import * as geometry from "./geometry.js";
 import * as constraints from "./constraints.js";
 import * as figures from "./figures.js";
+import * as graphics from "./graphics.js";
 
 function createFullscreenCanvas(parent: HTMLElement, rerender: (ctx: CanvasRenderingContext2D, canvas: HTMLCanvasElement) => void) {
 	const canvas = document.createElement("canvas");
@@ -37,38 +38,8 @@ function createFullscreenCanvas(parent: HTMLElement, rerender: (ctx: CanvasRende
 	};
 }
 
-function sortedBy<T>(array: T[], f: (element: T) => number): T[] {
-	return [...array].sort((a, b) => f(a) - f(b));
-}
-
-class View {
-	constructor(
-		public canvas: HTMLCanvasElement,
-		public center: Position,
-		public pixelsPerMilli: number,
-	) { }
-
-	toScreen(world: Position): Position {
-		const dx = world.x - this.center.x;
-		const dy = world.y - this.center.y;
-		return {
-			x: this.canvas.width / 2 + dx * this.pixelsPerMilli,
-			y: this.canvas.height / 2 + dy * this.pixelsPerMilli,
-		};
-	}
-
-	toWorld(screen: Position): Position {
-		const dx = screen.x - this.canvas.width / 2;
-		const dy = screen.y - this.canvas.height / 2;
-		return {
-			x: this.center.x + dx / this.pixelsPerMilli,
-			y: this.center.y + dy / this.pixelsPerMilli,
-		};
-	}
-}
-
 const about = createFullscreenCanvas(document.body, rerender);
-let view: View = new View(about.canvas, { x: 0, y: 0 }, 1);
+let view: graphics.View = new graphics.View(about.canvas, { x: 0, y: 0 }, 1);
 
 const boardFigures: figures.Figure[] = [
 	new figures.PointFigure({ x: 0, y: 0 }),
@@ -108,19 +79,6 @@ function screenDistanceToFigure(figure: figures.Figure, screenQuery: Position): 
 	throw new Error("unhandled figure: " + String(figure) + " / " + Object.getPrototypeOf(figure)?.constructor?.name);
 }
 
-const COLOR_BACKGROUND = "#FFFFFF";
-const COLOR_REGULAR_INK = "#000000";
-const COLOR_HOVER = "#00AA55";
-const COLOR_DRAFT = "#BBBBBB";
-const COLOR_SELECTED = "#88BBFF";
-const COLOR_ERROR = "#EE4488";
-
-const OUTLINE_WIDTH = 2;
-const SEGMENT_WIDTH = 3.5;
-const POINT_DIAMETER = 5.5;
-const LABELING_WIDTH = 1;
-const DIMENSION_GAP = 7;
-
 function figureOrdering(f: figures.Figure) {
 	if (f instanceof figures.PointFigure) {
 		return 3000;
@@ -134,172 +92,9 @@ function figureOrdering(f: figures.Figure) {
 function getMouseHovering(screenCursor: Position): figures.Figure[] {
 	return boardFigures
 		.map(figure => ({ figure, distance: screenDistanceToFigure(figure, screenCursor) }))
-		.filter(x => x.distance <= POINT_DIAMETER + OUTLINE_WIDTH + 1)
+		.filter(x => x.distance <= graphics.POINT_DIAMETER + graphics.OUTLINE_WIDTH + 1)
 		.sort((a, b) => a.distance - b.distance)
 		.map(x => x.figure);
-}
-
-function drawLengthDimension(
-	ctx: CanvasRenderingContext2D,
-	fromWorld: Position,
-	toWorld: Position,
-	labelWorld: Position,
-	labelText: string,
-	ink: string,
-): void {
-	ctx.strokeStyle = ink;
-	ctx.lineWidth = LABELING_WIDTH;
-	ctx.beginPath();
-	const fromScreen = view.toScreen(fromWorld);
-	const toScreen = view.toScreen(toWorld);
-	const labelScreen = view.toScreen(labelWorld);
-
-	const screenAlong = geometry.pointUnit(geometry.pointSubtract(toScreen, fromScreen));
-	const screenPerpendicular = geometry.pointUnit({
-		x: toScreen.y - fromScreen.y,
-		y: fromScreen.x - toScreen.x,
-	});
-
-	const offset = geometry.pointDot(screenPerpendicular, geometry.pointSubtract(labelScreen, fromScreen));
-	const labelAlong = geometry.pointDot(screenAlong, geometry.pointSubtract(labelScreen, fromScreen));
-
-	const fromStart = geometry.linearSum([1, fromScreen], [DIMENSION_GAP * Math.sign(offset), screenPerpendicular]);
-	const fromEnd = geometry.linearSum([1, fromScreen], [offset + DIMENSION_GAP * Math.sign(offset), screenPerpendicular]);
-	const fromLabelLine = geometry.linearSum(
-		[1, fromScreen], [offset, screenPerpendicular], [Math.min(0, labelAlong), screenAlong]
-	);
-	const toLabelLine = geometry.linearSum(
-		[1, fromScreen], [offset, screenPerpendicular], [Math.max(geometry.pointDistance(fromScreen, toScreen), labelAlong), screenAlong]
-	);
-	const toEnd = geometry.linearSum([1, toScreen], [offset + DIMENSION_GAP * Math.sign(offset), screenPerpendicular]);
-	const toStart = geometry.linearSum([1, toScreen], [DIMENSION_GAP * Math.sign(offset), screenPerpendicular]);
-	ctx.beginPath();
-	ctx.moveTo(fromStart.x, fromStart.y);
-	ctx.lineTo(fromEnd.x, fromEnd.y);
-	ctx.moveTo(toStart.x, toStart.y);
-	ctx.lineTo(toEnd.x, toEnd.y);
-	ctx.moveTo(fromLabelLine.x, fromLabelLine.y);
-	ctx.lineTo(toLabelLine.x, toLabelLine.y);
-	ctx.stroke();
-
-	ctx.fillStyle = COLOR_BACKGROUND;
-	const fontSize = 20;
-	ctx.font = fontSize + "px 'Josefin Slab'";
-	const textMetrics = ctx.measureText(labelText);
-	ctx.fillRect(labelScreen.x - textMetrics.width / 2 - 4, labelScreen.y - fontSize / 2 - 4, textMetrics.width + 9, fontSize + 9);
-
-	ctx.fillStyle = ink;
-	ctx.textAlign = "center";
-	ctx.textBaseline = "middle";
-	ctx.fillText(labelText, labelScreen.x, labelScreen.y);
-}
-
-function drawAngleDimension(
-	ctx: CanvasRenderingContext2D,
-	fromWorld: { from: Position, to: Position },
-	toWorld: { from: Position, to: Position },
-	labelWorld: Position,
-	labelText: string,
-	ink: string,
-	kind: "acute" | "obtuse",
-) {
-	// Find the center of the arc (i.e., where the lines intersect)
-	const centerWorld = geometry.lineIntersection(fromWorld, toWorld);
-	let fromArrow: Position;
-	let toArrow: Position;
-
-	ctx.strokeStyle = ink;
-	ctx.lineWidth = LABELING_WIDTH;
-	ctx.beginPath();
-
-	if (centerWorld === null) {
-		// The lines are parallel
-		fromArrow = new Segment(fromWorld.from, fromWorld.to)
-			.nearestToLine(labelWorld)
-			.position;
-		toArrow = new Segment(toWorld.from, toWorld.to)
-			.nearestToLine(labelWorld)
-			.position;
-
-		const fromArrowScreen = view.toScreen(fromArrow);
-		const toArrowScreen = view.toScreen(toArrow);
-		ctx.moveTo(fromArrowScreen.x, fromArrowScreen.y);
-		ctx.lineTo(toArrowScreen.x, toArrowScreen.y);
-	} else {
-		const circle: geometry.Circle = {
-			center: centerWorld,
-			radius: pointDistance(centerWorld, labelWorld),
-		};
-
-		const centerScreen = view.toScreen(centerWorld);
-		const radiusScreen = view.pixelsPerMilli * circle.radius;
-
-		const fromHits = geometry.circleLineIntersection(circle, fromWorld) as Position[];
-		const toHits = geometry.circleLineIntersection(circle, toWorld) as Position[];
-
-		// The hits divide the circle into 4 regions.
-		const angleDivisions = [...fromHits, ...toHits].map(point => {
-			const relative = geometry.pointSubtract(point, centerWorld);
-			return Math.atan2(relative.y, relative.x);
-		}).sort((a, b) => a - b);
-
-		const acutes = [];
-		const obtuses = [];
-		for (let i = 0; i < angleDivisions.length; i++) {
-			const ta = angleDivisions[i];
-			let tb = angleDivisions[(i + 1) % angleDivisions.length];
-			if (tb < ta) {
-				tb += Math.PI * 2;
-			}
-			if (tb - ta <= Math.PI / 2) {
-				// This is an acute arc
-				acutes.push([ta, tb]);
-			} else {
-				// This is an obtuse arc
-				obtuses.push([ta, tb]);
-			}
-		}
-
-		let startAngle;
-		let endAngle;
-
-		const arcs = (kind === "acute" ? acutes : obtuses)
-			.map(([t0, t1]) => {
-				const v0 = { x: Math.cos(t0), y: Math.sin(t0) };
-				const v1 = { x: Math.cos(t1), y: Math.sin(t1) };
-				return {
-					t0, t1,
-					mid: geometry.pointUnit(geometry.linearSum([1, v0], [1, v1])),
-				};
-			});
-
-		const arc = sortedBy(arcs, arc => {
-			return -geometry.pointDot(arc.mid, geometry.pointSubtract(labelWorld, centerWorld));
-		})[0];
-		if (arc) {
-			startAngle = arc.t0;
-			endAngle = arc.t1;
-			ctx.ellipse(centerScreen.x, centerScreen.y, radiusScreen, radiusScreen, 0, startAngle, endAngle, false);
-		}
-	}
-	ctx.stroke();
-
-	const labelScreen = view.toScreen(labelWorld);
-	ctx.fillStyle = COLOR_BACKGROUND;
-	const fontSize = 20;
-	ctx.font = fontSize + "px 'Josefin Slab'";
-	const textMetrics = ctx.measureText(labelText);
-	ctx.fillRect(
-		labelScreen.x - textMetrics.width / 2 - 4,
-		labelScreen.y - fontSize / 2 - 4,
-		textMetrics.width + 9,
-		fontSize + 9
-	);
-
-	ctx.fillStyle = ink;
-	ctx.textAlign = "center";
-	ctx.textBaseline = "middle";
-	ctx.fillText(labelText, labelScreen.x, labelScreen.y);
 }
 
 function isDimensionInvalid(figure: figures.Figure): boolean {
@@ -330,36 +125,30 @@ function rerender(ctx: CanvasRenderingContext2D, canvas: HTMLCanvasElement): voi
 	if (cursorMode.tag === "lines" && cursorMode.from !== null) {
 		// Sketching a new line
 		const destination = choosePoint(lastMouseCursor);
-		ctx.lineWidth = SEGMENT_WIDTH;
-		ctx.lineCap = "round";
-		ctx.strokeStyle = COLOR_DRAFT;
-		const fromScreen = view.toScreen(cursorMode.from.position);
-		const toScreen = view.toScreen(destination.world);
-		ctx.beginPath();
-		ctx.moveTo(fromScreen.x, fromScreen.y);
-		ctx.lineTo(toScreen.x, toScreen.y);
-		ctx.stroke();
+		graphics.drawSketchedSegment(ctx, view, cursorMode.from.position, destination.world);
 	}
 
 	const sketchingConstraint = getConstraining();
 	if (sketchingConstraint !== null) {
 		if (sketchingConstraint.tag === "point-distance") {
-			drawLengthDimension(
+			graphics.drawLengthDimension(
 				ctx,
+				view,
 				sketchingConstraint.from.position,
 				sketchingConstraint.to.position,
 				view.toWorld(lastMouseCursor),
 				"?",
-				COLOR_DRAFT
+				graphics.COLOR_DRAFT
 			);
 		} else if (sketchingConstraint.tag === "segment-angle") {
-			drawAngleDimension(
+			graphics.drawAngleDimension(
 				ctx,
+				view,
 				{ from: sketchingConstraint.from.from.position, to: sketchingConstraint.from.to.position },
 				{ from: sketchingConstraint.to.from.position, to: sketchingConstraint.to.to.position },
 				view.toWorld(lastMouseCursor),
 				"?°",
-				COLOR_DRAFT,
+				graphics.COLOR_DRAFT,
 				"acute"
 			);
 		} else {
@@ -386,14 +175,14 @@ function rerender(ctx: CanvasRenderingContext2D, canvas: HTMLCanvasElement): voi
 	}
 
 	for (const figure of boardFigures.slice().sort(compareWithHover)) {
-		let ink = COLOR_REGULAR_INK;
+		let ink = graphics.COLOR_REGULAR_INK;
 
 		if (isDimensionInvalid(figure)) {
-			ink = COLOR_ERROR;
+			ink = graphics.COLOR_ERROR;
 		}
 
 		if (figure === hovering[0]) {
-			ink = COLOR_HOVER;
+			ink = graphics.COLOR_HOVER;
 		}
 
 		if (isChoosingPoint
@@ -401,40 +190,21 @@ function rerender(ctx: CanvasRenderingContext2D, canvas: HTMLCanvasElement): voi
 			&& figure === hovering[1]
 			&& figure instanceof figures.SegmentFigure) {
 			// The intersection of these two lines will be chosen.
-			ink = COLOR_HOVER;
+			ink = graphics.COLOR_HOVER;
 		}
 
 		if (cursorMode.tag === "move" && cursorMode.selected === figure) {
-			ink = COLOR_SELECTED;
+			ink = graphics.COLOR_SELECTED;
 		}
 
 		if (figure instanceof figures.PointFigure) {
-			const screen = view.toScreen(figure.position);
-			ctx.fillStyle = COLOR_BACKGROUND;
-			ctx.beginPath();
-			ctx.ellipse(screen.x, screen.y, POINT_DIAMETER / 2 + OUTLINE_WIDTH, POINT_DIAMETER / 2 + OUTLINE_WIDTH, 0, 0, 2 * Math.PI);
-			ctx.fill();
-			ctx.fillStyle = ink;
-			ctx.beginPath();
-			ctx.ellipse(screen.x, screen.y, POINT_DIAMETER / 2, POINT_DIAMETER / 2, 0, 0, 2 * Math.PI);
-			ctx.fill();
+			graphics.drawPoint(ctx, view, figure.position, ink);
 		} else if (figure instanceof figures.SegmentFigure) {
-			const fromScreen = view.toScreen(figure.from.position);
-			const toScreen = view.toScreen(figure.to.position);
-			ctx.strokeStyle = ink;
-			ctx.lineWidth = SEGMENT_WIDTH + 2 * OUTLINE_WIDTH;
-			ctx.lineCap = "round";
-			ctx.strokeStyle = COLOR_BACKGROUND;
-			ctx.beginPath();
-			ctx.moveTo(fromScreen.x, fromScreen.y);
-			ctx.lineTo(toScreen.x, toScreen.y);
-			ctx.stroke();
-			ctx.lineWidth = SEGMENT_WIDTH;
-			ctx.strokeStyle = ink;
-			ctx.stroke();
+			graphics.drawSegment(ctx, view, figure.from.position, figure.to.position, ink);
 		} else if (figure instanceof figures.DimensionPointDistanceFigure) {
-			drawLengthDimension(
+			graphics.drawLengthDimension(
 				ctx,
+				view,
 				figure.from.position,
 				figure.to.position,
 				figure.labelWorldPosition(),
@@ -442,8 +212,9 @@ function rerender(ctx: CanvasRenderingContext2D, canvas: HTMLCanvasElement): voi
 				ink,
 			);
 		} else if (figure instanceof figures.DimensionSegmentAngleFigure) {
-			drawAngleDimension(
+			graphics.drawAngleDimension(
 				ctx,
+				view,
 				{ from: figure.from.from.position, to: figure.from.to.position },
 				{ from: figure.to.from.position, to: figure.to.to.position },
 				figure.labelWorldPosition(),
