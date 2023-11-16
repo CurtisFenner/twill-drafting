@@ -92,7 +92,7 @@ export class DimensionPointDistanceFigure extends AbstractDimensionFigure {
 	}
 }
 
-export class DimensionSegmentPointDistanceFigure extends AbstractDimensionFigure {
+export class DimensionPointSegmentDistanceFigure extends AbstractDimensionFigure {
 	constructor(
 		public a: PointFigure,
 		public b: SegmentFigure,
@@ -114,7 +114,7 @@ export class DimensionSegmentPointDistanceFigure extends AbstractDimensionFigure
 
 	edit() {
 		const askedLength = parseLengthMm(prompt("Distance to segment (mm):", this.distance.toString()));
-		if (askedLength) {
+		if (askedLength !== null) {
 			this.distance = askedLength;
 			return true;
 		}

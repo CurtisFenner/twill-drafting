@@ -70,7 +70,7 @@ function screenDistanceToFigure(figure: figures.Figure, screenQuery: geometry.Po
 		return out;
 	} else if (figure instanceof figures.DimensionPointDistanceFigure
 		|| figure instanceof figures.DimensionSegmentAngleFigure
-		|| figure instanceof figures.DimensionSegmentPointDistanceFigure) {
+		|| figure instanceof figures.DimensionPointSegmentDistanceFigure) {
 		// TODO: Include full label shape
 		const onScreen = view.toScreen(figure.labelWorldPosition());
 		return geometry.pointDistance(onScreen, screenQuery) - POINT_RADIUS * 2;
@@ -128,9 +128,9 @@ function rerender(ctx: CanvasRenderingContext2D, canvas: HTMLCanvasElement): voi
 		graphics.drawSketchedSegment(ctx, view, cursorMode.from.position, destination.world);
 	}
 
-	const sketchingConstraint = getConstraining();
+	const sketchingConstraint = convertSelectedFiguresToDimensionType();
 	if (sketchingConstraint !== null) {
-		if (sketchingConstraint.tag === "point-distance") {
+		if (sketchingConstraint.tag === "point-point-distance") {
 			graphics.drawLengthDimension(
 				ctx,
 				view,
@@ -150,6 +150,16 @@ function rerender(ctx: CanvasRenderingContext2D, canvas: HTMLCanvasElement): voi
 				"?°",
 				graphics.COLOR_DRAFT,
 				"acute"
+			);
+		} else if (sketchingConstraint.tag === "point-segment-distance") {
+			graphics.drawLengthDimension(
+				ctx,
+				view,
+				sketchingConstraint.point.position,
+				sketchingConstraint.segment.nearestToLine(sketchingConstraint.point.position),
+				view.toWorld(lastMouseCursor),
+				"?",
+				graphics.COLOR_DRAFT
 			);
 		} else {
 			const _: never = sketchingConstraint;
@@ -211,6 +221,18 @@ function rerender(ctx: CanvasRenderingContext2D, canvas: HTMLCanvasElement): voi
 				figure.distance.toString(),
 				ink,
 			);
+		} else if (figure instanceof figures.DimensionPointSegmentDistanceFigure) {
+			if (figure.distance !== 0) {
+				graphics.drawLengthDimension(
+					ctx,
+					view,
+					figure.a.position,
+					figure.b.nearestToLine(figure.a.position),
+					figure.labelWorldPosition(),
+					figure.distance.toString(),
+					ink,
+				);
+			}
 		} else if (figure instanceof figures.DimensionSegmentAngleFigure) {
 			graphics.drawAngleDimension(
 				ctx,
@@ -358,8 +380,8 @@ function placeDimensionBetweenPoints(
 	const dimension = new figures.DimensionPointDistanceFigure(from, to, currentLength, relativePlacement);
 	if (dimension.edit()) {
 		boardFigures.push(dimension);
+		cursorMode.constraining = [];
 	}
-	cursorMode.constraining = [];
 }
 
 function placeAngleDimensionBetweenSegments(
@@ -383,13 +405,36 @@ function placeAngleDimensionBetweenSegments(
 	const dimension = new figures.DimensionSegmentAngleFigure(a, b, angle, relativePlacement);
 	if (dimension.edit()) {
 		boardFigures.push(dimension);
+		cursorMode.constraining = [];
 	}
-	cursorMode.constraining = [];
 }
 
-function getConstraining(): null
-	| { tag: "point-distance", from: figures.PointFigure, to: figures.PointFigure }
-	| { tag: "segment-angle", from: figures.SegmentFigure, to: figures.SegmentFigure } {
+function placePointSegmentDistanceDimension(
+	point: figures.PointFigure,
+	segment: figures.SegmentFigure,
+	atWorld: geometry.Position,
+) {
+	if (cursorMode.tag !== "dimension") {
+		throw new Error("placeDimensionBetweenPoints: invalid cursorMode");
+	}
+
+	const nearestToLine = segment.nearestToLine(point.position);
+	const currentDistance = geometry.pointDistance(point.position, nearestToLine);
+	const relativePlacement = geometry.pointSubtract(
+		atWorld,
+		geometry.linearSum([0.5, nearestToLine], [0.5, point.position]),
+	);
+	const dimension = new figures.DimensionPointSegmentDistanceFigure(point, segment, Math.round(currentDistance), relativePlacement);
+	if (dimension.edit()) {
+		boardFigures.push(dimension);
+		cursorMode.constraining = [];
+	}
+}
+
+function convertSelectedFiguresToDimensionType(): null
+	| { tag: "point-point-distance", from: figures.PointFigure, to: figures.PointFigure }
+	| { tag: "segment-angle", from: figures.SegmentFigure, to: figures.SegmentFigure }
+	| { tag: "point-segment-distance", point: figures.PointFigure, segment: figures.SegmentFigure } {
 	if (cursorMode.tag !== "dimension") {
 		return null;
 	}
@@ -397,15 +442,27 @@ function getConstraining(): null
 	if (cursorMode.constraining.length === 1) {
 		const [a] = cursorMode.constraining;
 		if (a instanceof figures.SegmentFigure) {
-			return { tag: "point-distance", from: a.from, to: a.to };
+			return { tag: "point-point-distance", from: a.from, to: a.to };
 		}
 	} else if (cursorMode.constraining.length === 2) {
 		const [a, b] = cursorMode.constraining;
 		if (a instanceof figures.PointFigure && b instanceof figures.PointFigure) {
-			return { tag: "point-distance", from: a, to: b };
+			return { tag: "point-point-distance", from: a, to: b };
 		} else if (a instanceof figures.SegmentFigure && b instanceof figures.SegmentFigure) {
 			// TODO: When exactly parallel, change to distance constraint
 			return { tag: "segment-angle", from: a, to: b };
+		} else if (a instanceof figures.PointFigure && b instanceof figures.SegmentFigure) {
+			return {
+				tag: "point-segment-distance",
+				point: a,
+				segment: b,
+			};
+		} else if (a instanceof figures.SegmentFigure && b instanceof figures.PointFigure) {
+			return {
+				tag: "point-segment-distance",
+				point: b,
+				segment: a,
+			};
 		}
 	}
 
@@ -431,12 +488,14 @@ function dimensioningClick(cursorScreen: geometry.Position): void {
 
 	if (hovering === undefined) {
 		// Attempt to create a dimension, if it exists.
-		const constraining = getConstraining();
+		const constraining = convertSelectedFiguresToDimensionType();
 		if (constraining !== null) {
-			if (constraining.tag === "point-distance") {
+			if (constraining.tag === "point-point-distance") {
 				placeDimensionBetweenPoints(constraining.from, constraining.to, view.toWorld(cursorScreen));
 			} else if (constraining.tag === "segment-angle") {
 				placeAngleDimensionBetweenSegments(constraining.from, constraining.to, view.toWorld(cursorScreen));
+			} else if (constraining.tag === "point-segment-distance") {
+				placePointSegmentDistanceDimension(constraining.point, constraining.segment, view.toWorld(cursorScreen));
 			} else {
 				const _: never = constraining;
 				throw new Error("dimensioningClick: unhandled constraining.tag: " + constraining["tag"]);
@@ -694,7 +753,7 @@ function recalculateConstraints() {
 				},
 				angleRadians: figure.angleDegrees * Math.PI / 180,
 			});
-		} else if (figure instanceof figures.DimensionSegmentPointDistanceFigure) {
+		} else if (figure instanceof figures.DimensionPointSegmentDistanceFigure) {
 			cs.push({
 				tag: "segment-distance",
 				a: getVariableName(figure.a),
