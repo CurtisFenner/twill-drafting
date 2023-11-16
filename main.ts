@@ -1,7 +1,7 @@
-import { Position, Segment, pointDistance } from "./geometry.js";
-import * as geometry from "./geometry.js";
 import * as constraints from "./constraints.js";
+import * as data from "./data.js";
 import * as figures from "./figures.js";
+import * as geometry from "./geometry.js";
 import * as graphics from "./graphics.js";
 
 function createFullscreenCanvas(parent: HTMLElement, rerender: (ctx: CanvasRenderingContext2D, canvas: HTMLCanvasElement) => void) {
@@ -52,28 +52,28 @@ boardFigures.push(new figures.SegmentFigure(boardFigures[0] as figures.PointFigu
 boardFigures.push(new figures.SegmentFigure(boardFigures[2] as figures.PointFigure, boardFigures[3] as figures.PointFigure));
 boardFigures.push(new figures.DimensionSegmentAngleFigure(boardFigures[4] as figures.SegmentFigure, boardFigures[5] as figures.SegmentFigure, 45, { x: 150, y: 0 }));
 
-let lastMouseCursor: Position = { x: 0, y: 0 };
+let lastMouseCursor: geometry.Position = { x: 0, y: 0 };
 
-function screenDistanceToFigure(figure: figures.Figure, screenQuery: Position): number {
+function screenDistanceToFigure(figure: figures.Figure, screenQuery: geometry.Position): number {
 	const POINT_RADIUS = 5;
 	const LINE_RADIUS = 3;
 	if (figure instanceof figures.PointFigure) {
 		const onScreen = view.toScreen(figure.position);
-		return pointDistance(onScreen, screenQuery) - POINT_RADIUS * 2;
+		return geometry.pointDistance(onScreen, screenQuery) - POINT_RADIUS * 2;
 	} else if (figure instanceof figures.SegmentFigure) {
-		const screenSegment = new Segment(
+		const screenSegment = new geometry.Segment(
 			view.toScreen(figure.from.position),
 			view.toScreen(figure.to.position)
 		);
 		const m = screenSegment.nearestToSegment(screenQuery);
-		const out = pointDistance(m.position, screenQuery) - LINE_RADIUS;
+		const out = geometry.pointDistance(m.position, screenQuery) - LINE_RADIUS;
 		return out;
 	} else if (figure instanceof figures.DimensionPointDistanceFigure
 		|| figure instanceof figures.DimensionSegmentAngleFigure
 		|| figure instanceof figures.DimensionSegmentPointDistanceFigure) {
 		// TODO: Include full label shape
 		const onScreen = view.toScreen(figure.labelWorldPosition());
-		return pointDistance(onScreen, screenQuery) - POINT_RADIUS * 2;
+		return geometry.pointDistance(onScreen, screenQuery) - POINT_RADIUS * 2;
 	}
 
 	throw new Error("unhandled figure: " + String(figure) + " / " + Object.getPrototypeOf(figure)?.constructor?.name);
@@ -89,7 +89,7 @@ function figureOrdering(f: figures.Figure) {
 	}
 }
 
-function getMouseHovering(screenCursor: Position): figures.Figure[] {
+function getMouseHovering(screenCursor: geometry.Position): figures.Figure[] {
 	return boardFigures
 		.map(figure => ({ figure, distance: screenDistanceToFigure(figure, screenCursor) }))
 		.filter(x => x.distance <= graphics.POINT_DIAMETER + graphics.OUTLINE_WIDTH + 1)
@@ -99,7 +99,7 @@ function getMouseHovering(screenCursor: Position): figures.Figure[] {
 
 function isDimensionInvalid(figure: figures.Figure): boolean {
 	if (figure instanceof figures.DimensionPointDistanceFigure) {
-		const measurement = pointDistance(figure.from.position, figure.to.position);
+		const measurement = geometry.pointDistance(figure.from.position, figure.to.position);
 		const expected = figure.distance;
 		return Math.abs(measurement - expected) >= geometry.EPSILON;
 	} else if (figure instanceof figures.DimensionSegmentAngleFigure) {
@@ -228,7 +228,7 @@ function rerender(ctx: CanvasRenderingContext2D, canvas: HTMLCanvasElement): voi
 	}
 }
 
-function cursorPosition(e: MouseEvent): Position {
+function cursorPosition(e: MouseEvent): geometry.Position {
 	if (!(e.currentTarget instanceof HTMLCanvasElement)) {
 		throw new Error("unreachable");
 	}
@@ -253,18 +253,18 @@ type MoveMode = {
 	 * Don't consider the mouse to be dragging until it has moved at least
 	 * DRAG_MINIMUM_DISTANCE away from this.
 	 */
-	screenFence: Position | null,
+	screenFence: geometry.Position | null,
 
 	dragging: null | {
 		tag: "point",
 		figure: figures.PointFigure,
-		originalPointWorld: Position,
-		originalCursorWorld: Position,
+		originalPointWorld: geometry.Position,
+		originalCursorWorld: geometry.Position,
 	} | {
 		tag: "dimension",
-		figure: figures.DimensionPointDistanceFigure | figures.DimensionSegmentAngleFigure,
-		originalLabelOffset: Position,
-		originalCursorWorld: Position,
+		figure: figures.AbstractDimensionFigure,
+		originalLabelOffset: geometry.Position,
+		originalCursorWorld: geometry.Position,
 	},
 };
 
@@ -283,7 +283,7 @@ let cursorMode: CursorMode = {
 	from: null,
 };
 
-function choosePoint(screenCursor: Position): { world: Position, figure: figures.PointFigure | null, incident: figures.Figure[] } {
+function choosePoint(screenCursor: geometry.Position): { world: geometry.Position, figure: figures.PointFigure | null, incident: figures.Figure[] } {
 	const hovering = getMouseHovering(screenCursor);
 	const world = view.toWorld(screenCursor);
 	if (hovering[0] instanceof figures.PointFigure) {
@@ -310,7 +310,7 @@ function choosePoint(screenCursor: Position): { world: Position, figure: figures
 	};
 }
 
-function chooseOrCreatePoint(screenCursor: Position): figures.PointFigure {
+function chooseOrCreatePoint(screenCursor: geometry.Position): figures.PointFigure {
 	const choice = choosePoint(screenCursor);
 	if (!choice.figure) {
 		const out = new figures.PointFigure(choice.world);
@@ -344,32 +344,28 @@ about.canvas.addEventListener("mousemove", e => {
 function placeDimensionBetweenPoints(
 	from: figures.PointFigure,
 	to: figures.PointFigure,
-	atWorld: Position,
+	atWorld: geometry.Position,
 ) {
 	if (cursorMode.tag !== "dimension") {
 		throw new Error("placeDimensionBetweenPoints: invalid cursorMode");
 	}
 
-	const currentLength = pointDistance(from.position, to.position);
-	const askedLength = figures.parseLengthMm(prompt("Length of segment (mm):", currentLength.toFixed(1)));
-	if (askedLength === null) {
-		// Do nothing.
-		return;
-	}
-
+	const currentLength = Math.round(geometry.pointDistance(from.position, to.position));
 	const relativePlacement = geometry.pointSubtract(
 		atWorld,
 		geometry.linearSum([0.5, from.position], [0.5, to.position]),
 	);
-	const dimension = new figures.DimensionPointDistanceFigure(from, to, askedLength, relativePlacement);
-	boardFigures.push(dimension);
+	const dimension = new figures.DimensionPointDistanceFigure(from, to, currentLength, relativePlacement);
+	if (dimension.edit()) {
+		boardFigures.push(dimension);
+	}
 	cursorMode.constraining = [];
 }
 
 function placeAngleDimensionBetweenSegments(
 	a: figures.SegmentFigure,
 	b: figures.SegmentFigure,
-	atWorld: Position,
+	atWorld: geometry.Position,
 ) {
 	if (cursorMode.tag !== "dimension") {
 		throw new Error("placeDimensionBetweenPoints: invalid cursorMode");
@@ -378,20 +374,16 @@ function placeAngleDimensionBetweenSegments(
 	const va = geometry.pointSubtract(a.to.position, a.from.position);
 	const vb = geometry.pointSubtract(b.to.position, b.from.position);
 	const dot = Math.abs(geometry.pointDot(geometry.pointUnit(va), geometry.pointUnit(vb)));
-	const angle = Math.acos(dot) * 180 / Math.PI;
-
-	const askedLength = figures.parseLengthMm(prompt("Measure of angle (deg):", angle.toFixed(0)));
-	if (askedLength === null || askedLength < 0 || askedLength >= 360) {
-		// Do nothing.
-		return;
-	}
+	const angle = Math.round(Math.acos(dot) * 180 / Math.PI);
 
 	const relativePlacement = geometry.pointSubtract(
 		atWorld,
 		geometry.linearSum([0.5, a.midpoint()], [0.5, b.midpoint()]),
 	);
-	const dimension = new figures.DimensionSegmentAngleFigure(a, b, askedLength, relativePlacement);
-	boardFigures.push(dimension);
+	const dimension = new figures.DimensionSegmentAngleFigure(a, b, angle, relativePlacement);
+	if (dimension.edit()) {
+		boardFigures.push(dimension);
+	}
 	cursorMode.constraining = [];
 }
 
@@ -420,11 +412,8 @@ function getConstraining(): null
 	return null;
 }
 
-function dimensioningClick(cursorScreen: Position): void {
-	const hovering = getMouseHovering(cursorScreen)
-		.filter(figure =>
-			figure instanceof figures.PointFigure || figure instanceof figures.SegmentFigure
-		)[0] as undefined | figures.PointFigure | figures.SegmentFigure;
+function dimensioningClick(cursorScreen: geometry.Position): void {
+	const hovering: undefined | figures.Figure = getMouseHovering(cursorScreen)[0];
 
 	if (cursorMode.tag !== "dimension") {
 		throw new Error("dimensioningClick: wrong cursorMode.tag");
@@ -485,7 +474,7 @@ function dimensioningClick(cursorScreen: Position): void {
 	}
 }
 
-function moveDragged(cursorScreen: Position) {
+function moveDragged(cursorScreen: geometry.Position) {
 	if (cursorMode.tag === "move" && cursorMode.dragging !== null) {
 		if (cursorMode.screenFence !== null) {
 			const screenMotion = geometry.pointDistance(cursorScreen, cursorMode.screenFence);
@@ -512,17 +501,6 @@ function moveDragged(cursorScreen: Position) {
 	}
 }
 
-function inPlaceFilter<T>(array: T[], predicate: (element: T) => boolean): void {
-	let write = 0;
-	for (let i = 0; i < array.length; i++) {
-		if (predicate(array[i])) {
-			array[write] = array[i];
-			write += 1;
-		}
-	}
-	array.length = write;
-}
-
 function deleteFigure(figure: figures.Figure) {
 	const dependers = new Map<figures.Figure, figures.Figure[]>();
 	for (const figure of boardFigures) {
@@ -540,7 +518,7 @@ function deleteFigure(figure: figures.Figure) {
 		}
 	}
 
-	inPlaceFilter(boardFigures, f => !queue.has(f));
+	data.inPlaceFilter(boardFigures, f => !queue.has(f));
 }
 
 about.canvas.addEventListener("mouseup", e => {
@@ -551,7 +529,7 @@ about.canvas.addEventListener("mouseup", e => {
 		if (cursorMode.doubleClick) {
 			if (cursorMode.screenFence !== null) {
 				if (cursorMode.dragging !== null) {
-					if (cursorMode.dragging.figure instanceof figures.DimensionPointDistanceFigure) {
+					if (cursorMode.dragging.figure instanceof figures.AbstractDimensionFigure) {
 						cursorMode.dragging.figure.edit();
 					}
 				}
@@ -584,8 +562,7 @@ about.canvas.addEventListener("mousedown", e => {
 					originalCursorWorld: view.toWorld(cursorScreen),
 					originalPointWorld: hovering.position,
 				};
-			} else if (hovering instanceof figures.DimensionPointDistanceFigure
-				|| hovering instanceof figures.DimensionSegmentAngleFigure) {
+			} else if (hovering instanceof figures.AbstractDimensionFigure) {
 				cursorMode.dragging = {
 					tag: "dimension",
 					figure: hovering,
@@ -673,7 +650,7 @@ modeChange();
 
 function recalculateConstraints() {
 	const pointName = new Map<figures.PointFigure, string>();
-	const variables = new Map<string, Position>();
+	const variables = new Map<string, geometry.Position>();
 	const pointByName = new Map<string, figures.PointFigure>();
 	const cs: constraints.Constraint[] = [];
 

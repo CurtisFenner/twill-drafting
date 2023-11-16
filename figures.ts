@@ -19,6 +19,15 @@ export interface Figure {
 	dependsOn(): Figure[];
 }
 
+export abstract class AbstractDimensionFigure implements Figure {
+	constructor(public relativePlacement: geometry.Position) { }
+
+	abstract dependsOn(): Figure[];
+
+	abstract labelWorldPosition(): geometry.Position;
+	abstract edit(): boolean;
+}
+
 export class PointFigure implements Figure {
 	constructor(public position: geometry.Position) { }
 
@@ -53,13 +62,13 @@ export class SegmentFigure implements Figure {
 	}
 }
 
-export class DimensionPointDistanceFigure implements Figure {
+export class DimensionPointDistanceFigure extends AbstractDimensionFigure {
 	constructor(
 		public from: PointFigure,
 		public to: PointFigure,
 		public distance: number,
-		public relativePlacement: geometry.Position,
-	) { }
+		relativePlacement: geometry.Position,
+	) { super(relativePlacement); }
 
 	dependsOn(): Figure[] {
 		return [this.from, this.to];
@@ -77,17 +86,19 @@ export class DimensionPointDistanceFigure implements Figure {
 		const askedLength = parseLengthMm(prompt("Length of segment (mm):", this.distance.toString()));
 		if (askedLength) {
 			this.distance = askedLength;
+			return true;
 		}
+		return false;
 	}
 }
 
-export class DimensionSegmentPointDistanceFigure implements Figure {
+export class DimensionSegmentPointDistanceFigure extends AbstractDimensionFigure {
 	constructor(
 		public a: PointFigure,
 		public b: SegmentFigure,
 		public distance: number,
-		public relativePlacement: geometry.Position,
-	) { }
+		relativePlacement: geometry.Position,
+	) { super(relativePlacement); }
 
 	dependsOn(): Figure[] {
 		return [this.a, this.b];
@@ -105,17 +116,28 @@ export class DimensionSegmentPointDistanceFigure implements Figure {
 		const askedLength = parseLengthMm(prompt("Distance to segment (mm):", this.distance.toString()));
 		if (askedLength) {
 			this.distance = askedLength;
+			return true;
 		}
+		return false;
 	}
 }
 
-export class DimensionSegmentAngleFigure implements Figure {
+export class DimensionSegmentAngleFigure extends AbstractDimensionFigure {
+	edit(): boolean {
+		const askedAngle = parseLengthMm(prompt("Measure of angle (deg):", this.angleDegrees.toFixed(0)));
+		if (askedAngle !== null && 0 <= askedAngle && askedAngle < 360) {
+			this.angleDegrees = askedAngle;
+			return true;
+		}
+		return false;
+	}
+
 	constructor(
 		public from: SegmentFigure,
 		public to: SegmentFigure,
 		public angleDegrees: number,
-		public relativePlacement: geometry.Position,
-	) { }
+		relativePlacement: geometry.Position,
+	) { super(relativePlacement); }
 
 	dependsOn(): Figure[] {
 		return [this.from, this.to];
