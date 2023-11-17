@@ -6,7 +6,7 @@ export function parseLengthMm(msg: string | undefined | null): number | null {
 		return null;
 	}
 	const n = parseFloat(msg.trim());
-	if (!isFinite(n) || n <= 0) {
+	if (!isFinite(n) || n < 0) {
 		return null;
 	}
 	return n;
@@ -84,8 +84,9 @@ export class DimensionPointDistanceFigure extends AbstractDimensionFigure {
 
 	edit() {
 		const askedLength = parseLengthMm(prompt("Length of segment (mm):", this.distance.toString()));
-		if (askedLength) {
+		if (askedLength !== null && askedLength > 0) {
 			this.distance = askedLength;
+			console.log("this.distance:", this.distance, "true!");
 			return true;
 		}
 		return false;
@@ -114,10 +115,12 @@ export class DimensionPointSegmentDistanceFigure extends AbstractDimensionFigure
 
 	edit() {
 		const askedLength = parseLengthMm(prompt("Distance to segment (mm):", this.distance.toString()));
+		console.log("edit:", askedLength);
 		if (askedLength !== null) {
 			this.distance = askedLength;
 			return true;
 		}
+		console.log("so false");
 		return false;
 	}
 }

@@ -41,16 +41,7 @@ function createFullscreenCanvas(parent: HTMLElement, rerender: (ctx: CanvasRende
 const about = createFullscreenCanvas(document.body, rerender);
 let view: graphics.View = new graphics.View(about.canvas, { x: 0, y: 0 }, 1);
 
-const boardFigures: figures.Figure[] = [
-	new figures.PointFigure({ x: 0, y: 0 }),
-	new figures.PointFigure({ x: 100, y: 0 }),
-	new figures.PointFigure({ x: 0, y: 50 }),
-	new figures.PointFigure({ x: 200, y: 250 }),
-];
-
-boardFigures.push(new figures.SegmentFigure(boardFigures[0] as figures.PointFigure, boardFigures[1] as figures.PointFigure));
-boardFigures.push(new figures.SegmentFigure(boardFigures[2] as figures.PointFigure, boardFigures[3] as figures.PointFigure));
-boardFigures.push(new figures.DimensionSegmentAngleFigure(boardFigures[4] as figures.SegmentFigure, boardFigures[5] as figures.SegmentFigure, 45, { x: 150, y: 0 }));
+const boardFigures: figures.Figure[] = [];
 
 let lastMouseCursor: geometry.Position = { x: 0, y: 0 };
 
@@ -337,6 +328,15 @@ function chooseOrCreatePoint(screenCursor: geometry.Position): figures.PointFigu
 	if (!choice.figure) {
 		const out = new figures.PointFigure(choice.world);
 		boardFigures.push(out);
+		for (const incident of choice.incident) {
+			if (incident instanceof figures.SegmentFigure) {
+				const incidentConstraint = new figures.DimensionPointSegmentDistanceFigure(out, incident, 0, { x: 0, y: 0 });
+				boardFigures.push(incidentConstraint);
+				console.log(boardFigures);
+			} else {
+				console.error("unknown incident", incident);
+			}
+		}
 		return out;
 	}
 	return choice.figure;
@@ -597,6 +597,8 @@ about.canvas.addEventListener("mouseup", e => {
 
 		cursorMode.dragging = null;
 	}
+
+	console.log(boardFigures);
 });
 
 about.canvas.addEventListener("mousedown", e => {

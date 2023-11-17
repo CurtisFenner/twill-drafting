@@ -424,7 +424,7 @@ function solveLocal(
 				const a = solution.get(c.a)!;
 				const segmentFixed = solution.get(variable === c.b.p0 ? c.b.p1 : c.b.p0)!;
 				const theta = Math.asin(c.distance / geometry.pointDistance(a, segmentFixed));
-				if (!isFinite(theta) || theta === 0) {
+				if (!isFinite(theta)) {
 					return gamut;
 				}
 
