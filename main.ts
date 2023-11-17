@@ -340,7 +340,6 @@ function chooseOrCreatePoint(screenCursor: geometry.Position): figures.PointFigu
 			if (incident instanceof figures.SegmentFigure) {
 				const incidentConstraint = new figures.DimensionPointSegmentDistanceFigure(out, incident, 0, { x: 0, y: 0 });
 				boardFigures.push(incidentConstraint);
-				console.log(boardFigures);
 			} else {
 				console.error("unknown incident", incident);
 			}
@@ -605,8 +604,6 @@ about.canvas.addEventListener("mouseup", e => {
 
 		cursorMode.dragging = null;
 	}
-
-	console.log(boardFigures);
 });
 
 about.canvas.addEventListener("mousedown", e => {
