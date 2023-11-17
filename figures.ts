@@ -154,3 +154,15 @@ export class DimensionSegmentAngleFigure extends AbstractDimensionFigure {
 		);
 	}
 }
+
+export class ConstraintFixedAngle implements Figure {
+	constructor(
+		public from: PointFigure,
+		public to: PointFigure,
+		public angleDegrees: number,
+	) { }
+
+	dependsOn(): Figure[] {
+		return [this.from, this.to];
+	}
+}

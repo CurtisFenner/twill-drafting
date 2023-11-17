@@ -65,6 +65,8 @@ function screenDistanceToFigure(figure: figures.Figure, screenQuery: geometry.Po
 		// TODO: Include full label shape
 		const onScreen = view.toScreen(figure.labelWorldPosition());
 		return geometry.pointDistance(onScreen, screenQuery) - POINT_RADIUS * 2;
+	} else if (figure instanceof figures.ConstraintFixedAngle) {
+		return Infinity;
 	}
 
 	throw new Error("unhandled figure: " + String(figure) + " / " + Object.getPrototypeOf(figure)?.constructor?.name);
@@ -235,6 +237,8 @@ function rerender(ctx: CanvasRenderingContext2D, canvas: HTMLCanvasElement): voi
 				ink,
 				figure.angleDegrees >= 90 ? "obtuse" : "acute",
 			);
+		} else if (figure instanceof figures.ConstraintFixedAngle) {
+			// Do nothing
 		} else {
 			console.error("rerender: unhandled figure", figure);
 		}
@@ -252,7 +256,7 @@ function cursorPosition(e: MouseEvent): geometry.Position {
 	};
 }
 
-type CursorMode = MoveMode | LineMode | DimensionMode;
+type CursorMode = MoveMode | LineMode | DimensionMode | OrthogonalMode;
 
 const MOUSE_DRAG_MINIMUM_SCREEN_DISTANCE = 3;
 
@@ -289,6 +293,10 @@ type LineMode = {
 type DimensionMode = {
 	tag: "dimension",
 	constraining: figures.Figure[],
+};
+
+type OrthogonalMode = {
+	tag: "orthogonal",
 };
 
 let cursorMode: CursorMode = {
@@ -661,6 +669,40 @@ about.canvas.addEventListener("mousedown", e => {
 			dimensioningClick(cursorScreen);
 		}
 		return false;
+	} else if (cursorMode.tag === "orthogonal") {
+		if (e.button === 0) {
+			const hovering: figures.Figure | undefined = getMouseHovering(cursorScreen)[0];
+			if (hovering instanceof figures.SegmentFigure) {
+				// Toggle a horizontal/vertical
+				const direction = geometry.pointSubtract(hovering.to.position, hovering.from.position);
+				if (direction.x === 0 && direction.y === 0) {
+					return;
+				}
+
+				// Delete any existing fixed angle constraint
+				const orthogonalAngle = Math.abs(direction.x) >= Math.abs(direction.y)
+					? 0 : 90;
+				let deleted = false;
+				for (const figure of boardFigures) {
+					if (!(figure instanceof figures.ConstraintFixedAngle)) {
+						continue;
+					}
+					const samePoints = (figure.from === hovering.from && figure.to === hovering.to) ||
+						(figure.from === hovering.to && figure.to === hovering.from);
+					if (samePoints) {
+						deleteFigure(figure);
+						deleted = true;
+					}
+				}
+
+				if (!deleted) {
+					// Create a new fixed angle constraint
+					const constraint = new figures.ConstraintFixedAngle(hovering.from, hovering.to, orthogonalAngle);
+					boardFigures.push(constraint);
+				}
+			}
+		}
+		return false;
 	}
 
 	const _: never = cursorMode;
@@ -696,16 +738,22 @@ function modeChange() {
 			tag: "dimension",
 			constraining: [],
 		};
+	} else if (modeOrthogonalRadio.checked) {
+		cursorMode = {
+			tag: "orthogonal",
+		};
 	}
 }
 
 const modeMoveRadio = document.getElementById("mode-move") as HTMLInputElement;
 const modeLinesRadio = document.getElementById("mode-lines") as HTMLInputElement;
 const modeDimensionRadio = document.getElementById("mode-dimension") as HTMLInputElement;
+const modeOrthogonalRadio = document.getElementById("mode-orthogonal") as HTMLInputElement;
 
 modeMoveRadio.addEventListener("input", modeChange);
 modeLinesRadio.addEventListener("input", modeChange);
 modeDimensionRadio.addEventListener("input", modeChange);
+modeOrthogonalRadio.addEventListener("input", modeChange);
 
 modeChange();
 
@@ -725,6 +773,19 @@ function recalculateConstraints() {
 		pointByName.set(name, pointFigure);
 		return name;
 	}
+
+	variables.set("origin", { x: 0, y: 0 });
+	variables.set("x-axis", { x: 1, y: 0 });
+	cs.push({
+		tag: "fixed",
+		a: "origin",
+		position: { x: 0, y: 0 },
+	});
+	cs.push({
+		tag: "fixed",
+		a: "x-axis",
+		position: { x: 1, y: 0 },
+	});
 
 	// Prioritize the dragged element, so that there are no "locked" elements
 	// caused by arbitrary choices.
@@ -765,12 +826,27 @@ function recalculateConstraints() {
 				},
 				distance: figure.distance,
 			});
+		} else if (figure instanceof figures.ConstraintFixedAngle) {
+			cs.push({
+				tag: "angle",
+				a: {
+					p0: "origin",
+					p1: "x-axis",
+				},
+				b: {
+					p0: getVariableName(figure.from),
+					p1: getVariableName(figure.to),
+				},
+				angleRadians: figure.angleDegrees * Math.PI / 180,
+			});
 		}
 	}
 
 	const solution = constraints.solve(variables, cs);
 	for (const [variableName, newPosition] of solution.solution) {
-		const point = pointByName.get(variableName)!;
-		point.position = newPosition;
+		if (pointByName.has(variableName)) {
+			const point = pointByName.get(variableName)!;
+			point.position = newPosition;
+		}
 	}
 }
