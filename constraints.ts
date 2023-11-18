@@ -179,19 +179,16 @@ export function solve(
 			: r.localSolution.freedom);
 
 		const mostConstrained = byConstrainment[0];
-		log.push(mostConstrained);
-		const nearest = gamutNearest(mostConstrained.localSolution.intersection, mostConstrained.initialPoint);
-		if (nearest === null) {
-			solution.set(mostConstrained.variable, mostConstrained.initialPoint);
-		} else {
-			solution.set(mostConstrained.variable, nearest);
-		}
+		const nearest = gamutNearest(mostConstrained.localSolution.intersection, mostConstrained.initialPoint)
+			|| mostConstrained.initialPoint;
+		log.push({ ...mostConstrained, solution: nearest });
+		solution.set(mostConstrained.variable, nearest);
 	}
 
 	return { solution, log };
 }
 
-type Gamut = { tag: "plane" }
+export type Gamut = { tag: "plane" }
 	| { tag: "point", point: geometry.Position }
 	| { tag: "circle", circle: geometry.Circle }
 	| { tag: "line", line: geometry.Line }
@@ -394,22 +391,27 @@ function localConstraintToGamut(
 				: myLine.p0;
 			const otherPointPosition = fixed.get(otherPoint)!;
 
+			const lines: Gamut[] = [
+				{
+					tag: "line", line: {
+						from: otherPointPosition,
+						to: geometry.linearSum([1, otherPointPosition], [1, directionPositive]),
+					}
+				},
+				{
+					tag: "line", line: {
+						from: otherPointPosition,
+						to: geometry.linearSum([1, otherPointPosition], [1, directionNegative]),
+					},
+				},
+			];
+			if (Math.abs(constraint.angleRadians) <= epsilon || Math.abs(constraint.angleRadians - Math.PI / 2) <= epsilon) {
+				lines.pop();
+			}
+
 			return {
 				tag: "union",
-				union: [
-					{
-						tag: "line", line: {
-							from: otherPointPosition,
-							to: geometry.linearSum([1, otherPointPosition], [1, directionPositive]),
-						}
-					},
-					{
-						tag: "line", line: {
-							from: otherPointPosition,
-							to: geometry.linearSum([1, otherPointPosition], [1, directionNegative]),
-						},
-					},
-				],
+				union: lines,
 			};
 		}
 	} else if (constraint.tag === "segment-distance") {
