@@ -326,6 +326,11 @@ function choosePoint(screenCursor: geometry.Position): { world: geometry.Positio
 		};
 	} else if (hovering[0] instanceof figures.SegmentFigure && hovering[1] instanceof figures.SegmentFigure) {
 		// On the intersection of the two segments
+		return {
+			world: hovering[0].nearestToLine(world),
+			figure: null,
+			incident: [hovering[0], hovering[1]],
+		};
 	} else if (hovering[0] instanceof figures.SegmentFigure) {
 		// On the segment
 		return {
@@ -883,15 +888,7 @@ function recalculateConstraints() {
 			point.position = newPosition;
 		}
 	}
-	const thisLog = solution.log.join("\n");
-	if (thisLog !== lastLog) {
-		console.log(thisLog);
-		console.log(".".repeat(120));
-		lastLog = thisLog;
-	}
 }
-
-let lastLog: string = "";
 
 const saveButton = document.getElementById("save-button") as HTMLButtonElement;
 const saveNameInput = document.getElementById("save-name") as HTMLInputElement;

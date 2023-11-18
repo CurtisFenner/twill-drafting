@@ -199,12 +199,13 @@ export function projectToLine(
 export function circleLineIntersection(
 	circle: Circle,
 	line: { from: Position, to: Position },
-): [] | [Position, Position] {
+	epsilon: number = EPSILON,
+): Position[] {
 	const nearest = new Segment(line.from, line.to).nearestToLine(circle.center).position;
 	const orthogonalOffset = pointSubtract(nearest, circle.center);
 	const orthgonalDistance = pointMagnitude(orthogonalOffset);
 	const lineDirection = pointUnit(pointSubtract(line.to, line.from));
-	if (orthgonalDistance === 0) {
+	if (orthgonalDistance <= epsilon) {
 		return [
 			linearSum(
 				[1, circle.center],
@@ -218,9 +219,12 @@ export function circleLineIntersection(
 	}
 
 	const radical = circle.radius ** 2 - orthgonalDistance ** 2;
-	if (radical < 0) {
+	if (radical < -epsilon) {
 		return [];
+	} else if (radical < epsilon) {
+		return [nearest];
 	}
+
 	const dx = Math.sqrt(radical);
 	return [
 		linearSum(
