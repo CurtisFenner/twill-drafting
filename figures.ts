@@ -16,10 +16,15 @@ export interface Figure {
 	 * If any of these are deleted, delete this object.
 	 */
 	dependsOn(): Figure[];
+
+	bounds(): geometry.Position[];
 }
 
 export abstract class AbstractDimensionFigure implements Figure {
 	constructor(public relativePlacement: geometry.Position) { }
+	bounds(): geometry.Position[] {
+		return [this.labelWorldPosition()];
+	}
 
 	abstract dependsOn(): Figure[];
 
@@ -29,6 +34,10 @@ export abstract class AbstractDimensionFigure implements Figure {
 
 export class PointFigure implements Figure {
 	constructor(public position: geometry.Position) { }
+
+	bounds(): geometry.Position[] {
+		return [this.position];
+	}
 
 	dependsOn(): Figure[] {
 		return [];
@@ -41,6 +50,10 @@ export class SegmentFigure implements Figure {
 		public from: PointFigure,
 		public to: PointFigure,
 	) { }
+
+	bounds(): [geometry.Position, geometry.Position] {
+		return [this.from.position, this.to.position];
+	}
 
 	dependsOn(): Figure[] {
 		return [this.from, this.to];
@@ -157,6 +170,9 @@ export class ConstraintFixedAngle implements Figure {
 		public to: PointFigure,
 		public angleDegrees: number,
 	) { }
+	bounds(): geometry.Position[] {
+		return [this.from.position, this.to.position];
+	}
 
 	dependsOn(): Figure[] {
 		return [this.from, this.to];

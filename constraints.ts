@@ -155,9 +155,11 @@ export function solve(
 	}
 
 	const arbitrary: string[] = [];
+	const log: string[] = [];
 
 	while (solution.size < initialPoints.size) {
 		let best: null | { variable: string, gamut: Gamut } = null;
+		const logRow: number[] = [];
 		for (const [variable, initialPoint] of initialPoints) {
 			if (solution.has(variable)) {
 				continue;
@@ -171,7 +173,9 @@ export function solve(
 				continue;
 			}
 
-			if (best === null || gamutFreedom(best.gamut) > gamutFreedom(localSolution)) {
+			const freedom = gamutFreedom(localSolution);
+			logRow.push(freedom);
+			if (best === null || gamutFreedom(best.gamut) > freedom) {
 				best = {
 					variable,
 					gamut: localSolution,
@@ -179,7 +183,10 @@ export function solve(
 			}
 		}
 
+		log.push(logRow.sort((a, b) => a - b).join(", "));
+
 		if (best === null) {
+			log.push("unsolvable");
 			// All remaining points are unsolvable.
 			for (const [variable, initialPoint] of initialPoints) {
 				if (!solution.has(variable)) {
@@ -198,7 +205,7 @@ export function solve(
 		}
 	}
 
-	return { solution, arbitrary };
+	return { solution, arbitrary, log };
 }
 
 type Gamut = { tag: "plane" }

@@ -3,7 +3,7 @@
 <link rel="stylesheet" href="index.css">
 <title>Twill Drafting</title>
 <body>
-<div class="ui-tray">
+<div class="ui-tray no-print">
 	<form style="display: inline-block">
 		<label>
 			<input id="mode-move" type="radio" checked name="mode"> Move
@@ -20,5 +20,14 @@
 	</form><br>
 	<br>
 	<input type="text" id="save-name" value="sketch"> <button id="save-button">Save</button>
+
+	<select id="view-mode">
+		<option value="edit">Edit</option>
+		<option value="print72">Print 72ppi</option>
+		<option value="print150">Print 150ppi</option>
+		<option value="print300">Print 300ppi</option>
+	</select>
+
 </div>
+<div style="width: 50mm; height: 50mm; background-color: blue; color:white; border: 1px solid black;">Y</div>
 <script src="compiled/main.js" type="module"></script>

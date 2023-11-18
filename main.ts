@@ -5,22 +5,14 @@ import * as geometry from "./geometry.js";
 import * as graphics from "./graphics.js";
 import * as saving from "./saving.js";
 
-function createFullscreenCanvas(parent: HTMLElement, rerender: (ctx: CanvasRenderingContext2D, canvas: HTMLCanvasElement) => void) {
+function createFullscreenCanvas(rerender: (ctx: CanvasRenderingContext2D, canvas: HTMLCanvasElement) => void) {
 	const canvas = document.createElement("canvas");
-	document.body.appendChild(canvas);
 	const ctxOrNull = canvas.getContext("2d");
 	if (!(ctxOrNull instanceof CanvasRenderingContext2D)) {
 		throw new Error("could not create 2d canvas context");
 	}
 	const ctx = ctxOrNull;
 
-	function resizeCanvas() {
-		canvas.width = document.body.clientWidth;
-		canvas.height = document.body.clientHeight;
-	}
-
-	resizeCanvas();
-	window.addEventListener("resize", resizeCanvas);
 
 	let canceled = false;
 	function frame() {
@@ -39,8 +31,26 @@ function createFullscreenCanvas(parent: HTMLElement, rerender: (ctx: CanvasRende
 	};
 }
 
-const about = createFullscreenCanvas(document.body, rerender);
-let view: graphics.View = new graphics.View(about.canvas, { x: 0, y: 0 }, 1);
+const about = createFullscreenCanvas(rerender);
+let view: graphics.View = new graphics.View(about.canvas, { x: 0, y: 0 }, 72 / 25.4);
+
+function recenterView(focus: figures.Figure[], paddingMm: number): geometry.Position {
+	const points = focus.flatMap(figure => figure.bounds());
+	if (points.length === 0) {
+		return { x: 2 * paddingMm, y: 2 * paddingMm };
+	}
+
+	const xs = points.map(point => point.x);
+	const ys = points.map(point => point.y);
+	const xRange = [Math.min(...xs), Math.max(...xs)];
+	const yRange = [Math.min(...ys), Math.max(...ys)];
+	view.center.x = (xRange[0] + xRange[1]) / 2;
+	view.center.y = (yRange[0] + yRange[1]) / 2;
+	return {
+		x: 2 * paddingMm + xRange[1] - xRange[0],
+		y: 2 * paddingMm + yRange[1] - yRange[0],
+	};
+}
 
 const boardFigures: figures.Figure[] = [];
 
@@ -739,6 +749,7 @@ document.body.addEventListener("drop", async e => {
 		const loadedFigures = saving.deserializeFigures(json);
 		boardFigures.splice(0, boardFigures.length);
 		boardFigures.push(...loadedFigures);
+		recenterView(boardFigures, 25.4 / 2);
 	}
 });
 
@@ -872,7 +883,15 @@ function recalculateConstraints() {
 			point.position = newPosition;
 		}
 	}
+	const thisLog = solution.log.join("\n");
+	if (thisLog !== lastLog) {
+		console.log(thisLog);
+		console.log(".".repeat(120));
+		lastLog = thisLog;
+	}
 }
+
+let lastLog: string = "";
 
 const saveButton = document.getElementById("save-button") as HTMLButtonElement;
 const saveNameInput = document.getElementById("save-name") as HTMLInputElement;
@@ -886,3 +905,38 @@ saveButton.addEventListener("click", () => {
 	const text = saving.serializeFigures(boardFigures);
 	saving.downloadTextFile(filename, text);
 });
+
+function resizeCanvasToBody() {
+	about.canvas.width = document.body.clientWidth;
+	about.canvas.height = document.body.clientHeight;
+}
+
+const viewModeSelect = document.getElementById("view-mode") as HTMLSelectElement;
+viewModeSelect.addEventListener("input", () => {
+	const rangeMm = recenterView(boardFigures, 25.4 / 2);
+
+	if (viewModeSelect.value.startsWith("print")) {
+		const pixelsPerMm = parseInt(viewModeSelect.value.substring(5), 10) / 25.4;
+		about.canvas.style.width = Math.round(rangeMm.x) + "mm";
+		about.canvas.style.height = Math.round(rangeMm.y) + "mm";
+		about.canvas.width = Math.round(pixelsPerMm * rangeMm.x);
+		about.canvas.height = Math.round(pixelsPerMm * rangeMm.y);
+		view.pixelsPerMilli = pixelsPerMm;
+	} else if (viewModeSelect.value === "edit") {
+		const pixelsPerMm = 72 / 25.4;
+		view.pixelsPerMilli = pixelsPerMm;
+		about.canvas.style.width = "auto";
+		about.canvas.style.height = "auto";
+		resizeCanvasToBody();
+	}
+});
+
+window.addEventListener("resize", () => {
+	if (viewModeSelect.value === "edit") {
+		resizeCanvasToBody();
+	}
+});
+
+resizeCanvasToBody();
+
+document.body.insertBefore(about.canvas, document.body.firstChild);
