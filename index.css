@@ -39,7 +39,8 @@ canvas {
 }
 
 label,
-button {
+button,
+input[type="text"] {
 	border-radius: 5px;
 	padding: 0.25em;
 	margin-right: 0.5em;

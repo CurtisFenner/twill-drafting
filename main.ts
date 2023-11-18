@@ -3,6 +3,7 @@ import * as data from "./data.js";
 import * as figures from "./figures.js";
 import * as geometry from "./geometry.js";
 import * as graphics from "./graphics.js";
+import * as saving from "./saving.js";
 
 function createFullscreenCanvas(parent: HTMLElement, rerender: (ctx: CanvasRenderingContext2D, canvas: HTMLCanvasElement) => void) {
 	const canvas = document.createElement("canvas");
@@ -709,10 +710,35 @@ about.canvas.addEventListener("mousedown", e => {
 about.canvas.addEventListener("contextmenu", e => e.preventDefault());
 
 document.addEventListener("keydown", e => {
-	if (e.key === 'Delete' || e.key === 'Backspace') {
-		if (cursorMode.tag === "move" && cursorMode.selected !== null) {
-			deleteFigure(cursorMode.selected);
+	if (document.activeElement === document.body) {
+		if (e.key === 'Delete' || e.key === 'Backspace') {
+			if (cursorMode.tag === "move" && cursorMode.selected !== null) {
+				deleteFigure(cursorMode.selected);
+			}
 		}
+	}
+});
+
+function readFileText(file: File): Promise<string> {
+	return new Promise(resolve => {
+		const reader = new FileReader();
+		reader.addEventListener("loadend", function () {
+			resolve(this.result as string);
+		});
+		reader.readAsText(file, "utf-8");
+	});
+}
+
+document.body.addEventListener("dragenter", e => e.preventDefault());
+document.body.addEventListener("dragover", e => e.preventDefault());
+document.body.addEventListener("drop", async e => {
+	const file = e.dataTransfer?.files[0];
+	e.preventDefault();
+	if (file) {
+		const json = await readFileText(file);
+		const loadedFigures = saving.deserializeFigures(json);
+		boardFigures.splice(0, boardFigures.length);
+		boardFigures.push(...loadedFigures);
 	}
 });
 
@@ -847,3 +873,16 @@ function recalculateConstraints() {
 		}
 	}
 }
+
+const saveButton = document.getElementById("save-button") as HTMLButtonElement;
+const saveNameInput = document.getElementById("save-name") as HTMLInputElement;
+
+saveButton.addEventListener("click", () => {
+	let filename = saveNameInput.value || "sketch";
+	if (!filename.toLowerCase().endsWith(".json")) {
+		filename += ".json";
+	}
+
+	const text = saving.serializeFigures(boardFigures);
+	saving.downloadTextFile(filename, text);
+});

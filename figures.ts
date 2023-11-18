@@ -1,5 +1,4 @@
 import * as geometry from "./geometry.js";
-import * as constraints from "./constraints.js";
 
 export function parseLengthMm(msg: string | undefined | null): number | null {
 	if (!msg) {
@@ -86,7 +85,6 @@ export class DimensionPointDistanceFigure extends AbstractDimensionFigure {
 		const askedLength = parseLengthMm(prompt("Length of segment (mm):", this.distance.toString()));
 		if (askedLength !== null && askedLength > 0) {
 			this.distance = askedLength;
-			console.log("this.distance:", this.distance, "true!");
 			return true;
 		}
 		return false;
@@ -115,12 +113,10 @@ export class DimensionPointSegmentDistanceFigure extends AbstractDimensionFigure
 
 	edit() {
 		const askedLength = parseLengthMm(prompt("Distance to segment (mm):", this.distance.toString()));
-		console.log("edit:", askedLength);
 		if (askedLength !== null) {
 			this.distance = askedLength;
 			return true;
 		}
-		console.log("so false");
 		return false;
 	}
 }

@@ -417,7 +417,24 @@ function solveLocal(
 				return gamut;
 			} else if (variable === c.a) {
 				// variable lies on one of the lines offset from b
-				throw new Error("TODO!");
+				const from = solution.get(c.b.p0)!;
+				const to = solution.get(c.b.p1)!;
+				const parallel = geometry.pointUnit(geometry.pointSubtract(to, from));
+				if (!isFinite(parallel.x)) {
+					return gamut;
+				}
+				const perpendicular = { x: -parallel.y, y: parallel.x };
+				const lines: geometry.Line[] = [
+					{
+						from: geometry.linearSum([1, from], [c.distance, perpendicular]),
+						to: geometry.linearSum([1, to], [c.distance, perpendicular]),
+					},
+					{
+						from: geometry.linearSum([1, from], [-c.distance, perpendicular]),
+						to: geometry.linearSum([1, to], [-c.distance, perpendicular]),
+					},
+				];
+				gamut = gamutLinesIntersection(gamut, lines, geometry.EPSILON);
 			} else {
 				// The b_T lies on one of the lines that makes a theta angle
 				// with (b_t, a).
