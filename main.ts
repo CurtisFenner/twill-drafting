@@ -291,8 +291,8 @@ function drawGamut(
 			return;
 		}
 		const unit = geometry.pointUnit(direction);
-		a = geometry.linearSum([1, a], [10000, unit]);
-		b = geometry.linearSum([1, a], [-10000, unit]);
+		a = geometry.linearSum([1, a], [100000, unit]);
+		b = geometry.linearSum([1, a], [-100000, unit]);
 		ctx.beginPath();
 		ctx.moveTo(a.x, a.y);
 		ctx.lineTo(b.x, b.y);

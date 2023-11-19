@@ -157,8 +157,48 @@ export function circleCircleIntersection(a: Circle, b: Circle, epsilon: number =
 	const separation = pointSubtract(b.center, a.center);
 	const separationLength = pointMagnitude(separation);
 
-	if (separationLength <= EPSILON && Math.abs(a.radius - b.radius) <= EPSILON) {
-		return { tag: "circle", circle: a };
+	if (separationLength <= epsilon) {
+		if (Math.abs(a.radius - b.radius) <= epsilon) {
+			return { tag: "circle", circle: a };
+		} else {
+			// Same center but different radii
+			return { tag: "points", points: [] };
+		}
+	}
+
+	if (Math.abs(separationLength - (a.radius + b.radius)) <= epsilon) {
+		// The circles barely touch
+		return {
+			tag: "points",
+			points: [
+				linearSum(
+					[1, a.center],
+					[a.radius / (a.radius + b.radius), separation],
+				)
+			]
+		};
+	} else if (Math.abs(separationLength - Math.abs(a.radius - b.radius)) <= epsilon) {
+		if (a.radius > b.radius) {
+			return {
+				tag: "points",
+				points: [
+					linearSum(
+						[1, a.center],
+						[a.radius / (a.radius + b.radius), separation],
+					)
+				],
+			};
+		} else {
+			return {
+				tag: "points",
+				points: [
+					linearSum(
+						[1, b.center],
+						[-b.radius / (a.radius + b.radius), separation],
+					)
+				],
+			};
+		}
 	}
 
 	// Derived from the Law of Cosines
