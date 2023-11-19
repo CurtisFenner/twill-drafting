@@ -112,6 +112,10 @@ function isDimensionInvalid(figure: figures.Figure): boolean {
 		const dot = geometry.pointDot(geometry.pointUnit(v1), geometry.pointUnit(v2));
 		const expectation = Math.cos(figure.angleDegrees * Math.PI / 180);
 		return Math.abs(Math.abs(dot) - Math.abs(expectation)) >= geometry.EPSILON;
+	} else if (figure instanceof figures.DimensionPointSegmentDistanceFigure) {
+		const nearest = figure.b.nearestToLine(figure.a.position);
+		const measurement = geometry.pointDistance(nearest, figure.a.position);
+		return Math.abs(measurement - figure.distance) >= geometry.EPSILON;
 	} else {
 		return false;
 	}
@@ -142,7 +146,8 @@ function rerender(ctx: CanvasRenderingContext2D, canvas: HTMLCanvasElement): voi
 				sketchingConstraint.to.position,
 				view.toWorld(lastMouseCursor),
 				"?",
-				graphics.COLOR_DRAFT
+				graphics.COLOR_DRAFT,
+				{ bonusThickness: 0 },
 			);
 		} else if (sketchingConstraint.tag === "segment-angle") {
 			graphics.drawAngleDimension(
@@ -153,7 +158,8 @@ function rerender(ctx: CanvasRenderingContext2D, canvas: HTMLCanvasElement): voi
 				view.toWorld(lastMouseCursor),
 				"?°",
 				graphics.COLOR_DRAFT,
-				"acute"
+				"acute",
+				{ bonusThickness: 0 },
 			);
 		} else if (sketchingConstraint.tag === "point-segment-distance") {
 			graphics.drawLengthDimension(
@@ -163,7 +169,8 @@ function rerender(ctx: CanvasRenderingContext2D, canvas: HTMLCanvasElement): voi
 				sketchingConstraint.segment.nearestToLine(sketchingConstraint.point.position),
 				view.toWorld(lastMouseCursor),
 				"?",
-				graphics.COLOR_DRAFT
+				graphics.COLOR_DRAFT,
+				{ bonusThickness: 0 },
 			);
 		} else {
 			const _: never = sketchingConstraint;
@@ -191,8 +198,10 @@ function rerender(ctx: CanvasRenderingContext2D, canvas: HTMLCanvasElement): voi
 	for (const figure of boardFigures.slice().sort(compareWithHover)) {
 		let ink = graphics.COLOR_REGULAR_INK;
 
+		let bonusThickness = 0;
 		if (isDimensionInvalid(figure)) {
 			ink = graphics.COLOR_ERROR;
+			bonusThickness += 2;
 		}
 
 		if (figure === hovering[0]) {
@@ -224,6 +233,7 @@ function rerender(ctx: CanvasRenderingContext2D, canvas: HTMLCanvasElement): voi
 				figure.labelWorldPosition(),
 				figure.distance.toString(),
 				ink,
+				{ bonusThickness },
 			);
 		} else if (figure instanceof figures.DimensionPointSegmentDistanceFigure) {
 			if (figure.distance !== 0) {
@@ -235,6 +245,7 @@ function rerender(ctx: CanvasRenderingContext2D, canvas: HTMLCanvasElement): voi
 					figure.labelWorldPosition(),
 					figure.distance.toString(),
 					ink,
+					{ bonusThickness },
 				);
 			}
 		} else if (figure instanceof figures.DimensionSegmentAngleFigure) {
@@ -247,6 +258,7 @@ function rerender(ctx: CanvasRenderingContext2D, canvas: HTMLCanvasElement): voi
 				figure.angleDegrees.toString() + "°",
 				ink,
 				figure.angleDegrees >= 90 ? "obtuse" : "acute",
+				{ bonusThickness },
 			);
 		} else if (figure instanceof figures.ConstraintFixedAngle) {
 			// Do nothing
@@ -441,7 +453,31 @@ function createSegment(from: figures.PointFigure, to: figures.PointFigure): figu
 about.canvas.addEventListener("mousemove", e => {
 	lastMouseCursor = cursorPosition(e);
 
+	if (panStart !== null) {
+		const motionScreen = geometry.pointSubtract(lastMouseCursor, panStart.cursorScreen);
+		view.center = geometry.linearSum(
+			[1, panStart.viewCenter],
+			[-1 / view.pixelsPerMilli, motionScreen],
+		);
+	}
+
 	moveDragged(lastMouseCursor);
+});
+
+about.canvas.addEventListener("wheel", e => {
+	const pixelsScrolled = e.deltaY * (1 + e.deltaMode);
+	const zoomChange = Math.exp(-pixelsScrolled / 500);
+	const cursorScreen = cursorPosition(e);
+	const cursorWorld = view.toWorld(cursorScreen);
+	view.pixelsPerMilli *= zoomChange;
+	const newCursorWorld = view.toWorld(cursorScreen);
+	view.center = geometry.linearSum(
+		[1, view.center],
+		[-1, geometry.pointSubtract(newCursorWorld, cursorWorld)],
+	);
+	if (panStart !== null) {
+		// TODO! Fixup
+	}
 });
 
 function placeDimensionBetweenPoints(
@@ -663,6 +699,13 @@ function deleteFigure(figure: figures.Figure) {
 
 about.canvas.addEventListener("mouseup", e => {
 	const cursorScreen = cursorPosition(e);
+
+	if (e.button === 1) {
+		panStart = null;
+		e.preventDefault();
+		return;
+	}
+
 	if (cursorMode.tag === "move") {
 		moveDragged(cursorScreen);
 
@@ -680,8 +723,19 @@ about.canvas.addEventListener("mouseup", e => {
 	}
 });
 
+let panStart: null | { viewCenter: geometry.Position, cursorScreen: geometry.Position } = null;
+
 about.canvas.addEventListener("mousedown", e => {
 	const cursorScreen = cursorPosition(e);
+
+	if (e.button === 1) {
+		panStart = {
+			viewCenter: view.center,
+			cursorScreen
+		};
+		e.preventDefault();
+		return;
+	}
 
 	if (cursorMode.tag === "move") {
 		if (e.button === 2) {

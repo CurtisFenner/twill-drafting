@@ -67,9 +67,10 @@ export function drawLengthDimension(
 	labelWorld: Position,
 	labelText: string,
 	ink: string,
+	options: { bonusThickness: number },
 ): void {
 	ctx.strokeStyle = ink;
-	ctx.lineWidth = LABELING_WIDTH;
+	ctx.lineWidth = LABELING_WIDTH + options.bonusThickness;
 	ctx.beginPath();
 	const fromScreen = view.toScreen(fromWorld);
 	const toScreen = view.toScreen(toWorld);
@@ -104,7 +105,7 @@ export function drawLengthDimension(
 	ctx.stroke();
 
 	ctx.fillStyle = COLOR_BACKGROUND;
-	const fontSize = 20;
+	const fontSize = 20 + options.bonusThickness;
 	ctx.font = fontSize + "px 'Josefin Slab'";
 	const textMetrics = ctx.measureText(labelText);
 	ctx.fillRect(labelScreen.x - textMetrics.width / 2 - 4, labelScreen.y - fontSize / 2 - 4, textMetrics.width + 9, fontSize + 9);
@@ -124,6 +125,7 @@ export function drawAngleDimension(
 	labelText: string,
 	ink: string,
 	kind: "acute" | "obtuse",
+	options: { bonusThickness: number },
 ) {
 	// Find the center of the arc (i.e., where the lines intersect)
 	const centerWorld = geometry.lineIntersection(fromWorld, toWorld);
@@ -131,7 +133,7 @@ export function drawAngleDimension(
 	let toArrow: Position;
 
 	ctx.strokeStyle = ink;
-	ctx.lineWidth = LABELING_WIDTH;
+	ctx.lineWidth = LABELING_WIDTH + options.bonusThickness;
 	ctx.beginPath();
 
 	if (centerWorld === null) {
@@ -208,7 +210,7 @@ export function drawAngleDimension(
 
 	const labelScreen = view.toScreen(labelWorld);
 	ctx.fillStyle = COLOR_BACKGROUND;
-	const fontSize = 20;
+	const fontSize = 20 + options.bonusThickness;
 	ctx.font = fontSize + "px 'Josefin Slab'";
 	const textMetrics = ctx.measureText(labelText);
 	ctx.fillRect(
