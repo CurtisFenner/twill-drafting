@@ -819,7 +819,7 @@ about.canvas.addEventListener("mousedown", e => {
 			}
 		}
 		return false;
-	} else if (cursorMode.tag === 'draw-arc-mode') {
+	} else if (cursorMode.tag === "draw-arc-mode") {
 		if (e.button === 2) {
 			e.preventDefault();
 			cursorMode.center = null;

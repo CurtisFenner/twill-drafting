@@ -78,11 +78,15 @@ export class SegmentFigure implements Figure {
  * An `ArcFigure` is a partial circular arc with the provided `center` between the
  * points `end1` and `end2`.
  *
- * The two points `end1` and `end2` should be equidistant to `center` for best
- * behavior, but if not, the arc uses only the distance between `center` and `end1`
- * as the arc radius.
+ * The arc is drawn in the clockwise direction from `end1` to `end2`, which may
+ * be "short" (less than 180 degrees) or "long" (more than 180 degrees) but cannot
+ * be a full circle.
  *
- * An `ArcFigure` cannot represent a full, 360 degree circle.
+ * If `end1` and `end2` are not equidistant to `center`, the arc is drawn using
+ * the radius of `center` to `end1`.
+ *
+ * An `ArcFigure` cannot represent a full, 360 degree circle, but it can represent
+ * arcs greater than 180 degrees (as long as they are less than 360 degrees).
  */
 export class ArcFigure implements Figure {
 	constructor(
@@ -124,15 +128,16 @@ export class ArcFigure implements Figure {
 		const a1 = Math.atan2(this.end1.position.y - this.center.position.y, this.end1.position.x - this.center.position.x);
 		let a2 = Math.atan2(this.end2.position.y - this.center.position.y, this.end2.position.x - this.center.position.x);
 
-		if (Math.abs(a1 - a2) < geometry.EPSILON || Math.abs(a1 - a2 - Math.PI * 2) < geometry.EPSILON || r1 < geometry.EPSILON) {
+		if (geometry.circularArcDistance(a1, a2) < geometry.EPSILON) {
 			// There is some degeneracy in this case, so just lerp between the points instead.
 			return geometry.linearSum([1 - t, this.end1.position], [t, this.end2.position]);
 		}
+
 		if (a2 < a1) {
 			a2 += Math.PI * 2;
 		}
 
-		const a = a1 * (1 - t) + a2 * t;
+		const a = geometry.circularArcLerp(a1, a2, t);
 
 		return {
 			x: Math.cos(a) * r1 + this.center.position.x,

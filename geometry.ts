@@ -81,6 +81,113 @@ export class Segment {
 	}
 }
 
+/**
+ * Returns the distance (in radians) between two circular arc angles (also in radians).
+ * For example, `0` and `Math.PI*2` have distance `0`.
+ * Supports both positive and negative values.
+ * Throws if provided infinite or `NaN` values.
+ */
+export function circularArcDistance(angle1: number, angle2: number): number {
+	if (typeof angle1 !== 'number' || typeof angle2 !== 'number' || !isFinite(angle1) || !isFinite(angle2)) {
+		throw new Error(`cannot compute circularArcDistance(${angle1}, ${angle2})`);
+	}
+	angle1 %= Math.PI * 2;
+	angle2 %= Math.PI * 2;
+	if (angle1 < 0) {
+		angle1 += Math.PI * 2;
+	}
+	if (angle2 < 0) {
+		angle2 += Math.PI * 2;
+	}
+	const distanceDirect = Math.abs(angle1 - angle2);
+	const distancePlus = Math.abs(angle1 + Math.PI * 2 - angle2);
+	const distanceMinus = Math.abs(angle1 - Math.PI * 2 - angle2);
+	return Math.min(distanceDirect, distancePlus, distanceMinus);
+}
+
+/**
+ * For positive `m`, returns a value in the range `[0, m)`.
+ */
+export function mod(x: number, m: number): number {
+	x %= m;
+	if (x < 0) {
+		x += m;
+	}
+	return x;
+}
+
+/**
+ * Performs a lerp between `angle1` and `angle2`, following a (less than 360 degree)
+ * **clockwise** / **positive** circular arc from `angle1` to `angle2`.
+ *
+ * If `angle1` and `angle2` are approximately collinear, just returns `angle1` instead.
+ *
+ * Propagates `NaN` values.
+ *
+ * @param angle1 An arc angle, in radians.
+ * @param angle2 An arc angle, in radians.
+ * @param t A parameter in the range [0, 1].
+ *
+ * @returns An angle in the range [0, Math.PI * 2]
+ */
+export function circularArcLerp(angle1: number, angle2: number, t: number): number {
+	angle1 = mod(angle1, Math.PI * 2)
+	angle2 = mod(angle2, Math.PI * 2);
+
+	if (circularArcDistance(angle1, angle2) < EPSILON) {
+		return angle1;
+	}
+
+	if (angle2 < angle1) {
+		angle2 += Math.PI * 2;
+	}
+
+	return (angle1 + t * (angle2 - angle1)) % (Math.PI * 2);
+}
+
+/**
+ * Returns the inverse of the `circularArcLerp` function for a provided `angleTarget`.
+ * @returns A parameter, as close to being in [0, 1] as possible.
+ */
+export function circularArcInverseLerp(angle1: number, angle2: number, angleTarget: number): number {
+	angle1 = mod(angle1, Math.PI * 2);
+	angle2 = mod(angle2, Math.PI * 2);
+	angleTarget = mod(angleTarget, Math.PI * 2);
+
+	if (circularArcDistance(angle1, angle2) < EPSILON) {
+		// This case is degenerate.
+		return 0;
+	}
+
+	if (angle2 < angle1) {
+		angle2 += Math.PI * 2;
+	}
+
+	if (angleTarget < angle1) {
+		angleTarget += Math.PI * 2;
+	}
+
+	const tBase = (angleTarget - angle1) / (angle2 - angle1);
+	if (tBase >= 0 && tBase <= 1) {
+		return tBase;
+	}
+
+	// [0 (a1)---(a2) . . . . . . . . . . . . . . . (aT) 2pi]
+	// In the above example, `aT` is actually closer to the (a1) angle than the (a2) angle.
+	// So it is better to subtract out 2*PI.
+	const tBaseDistance = tBase < 0 ? Math.abs(tBase) : tBase - 1;
+
+	const tLower = (angleTarget - Math.PI * 2 - angle1) / (angle2 - angle1);
+	const tLowerDistance = tLower < 0 ? Math.abs(tLower) : tLower > 1 ? tLower - 1 : 0;
+
+
+	if (tLowerDistance < tBaseDistance) {
+		return tLower;
+	}
+
+	return tBase;
+}
+
 export class Arc {
 	constructor(
 		public readonly center: Position,
@@ -88,38 +195,22 @@ export class Arc {
 		public readonly end2: Position,
 	) { }
 
-	static angleDistance(a1: number, a2: number): number {
-		a1 %= Math.PI * 2;
-		a2 %= Math.PI * 2;
-		if (a2 < a1) {
-			a2 += Math.PI * 2;
-		}
-		return Math.min(a2 - a1, Math.abs(a1 + Math.PI * 2 - a2));
-	}
-
-
 	nearestToArc(
 		q: Position
 	): { t: number, position: Position } {
 		const a1 = Math.atan2(this.end1.y - this.center.y, this.end1.x - this.center.x);
-		let a2 = Math.atan2(this.end2.y - this.center.y, this.end2.x - this.center.x);
-		while (a2 < a1) {
-			a2 += Math.PI * 2;
-		}
+		const a2 = Math.atan2(this.end2.y - this.center.y, this.end2.x - this.center.x);
 
-		if (Arc.angleDistance(a1, a2) < EPSILON) {
+		if (circularArcDistance(a1, a2) < EPSILON) {
 			// The (center, end1, end2) are collinear, or end1 & end2 are nearly coincident.
 			// This is a degenerate case; just return something arbitrary.
 			return { t: 0, position: this.end1 };
 		}
 
-		let aQ = Math.atan2(q.y - this.center.y, q.x - this.center.x);
-		while (aQ < a1) {
-			aQ += Math.PI * 2;
-		}
+		const aQ = Math.atan2(q.y - this.center.y, q.x - this.center.x);
 		// Clamp to the arc's valid angles.
-		aQ = Math.max(a1, Math.min(a2, aQ));
-		const t = (aQ - a1) / (a2 - a1);
+		let t = circularArcInverseLerp(a1, a2, aQ);
+		t = Math.max(0, Math.min(1, t));
 
 		return {
 			t,
@@ -139,15 +230,12 @@ export class Arc {
 		const a1 = Math.atan2(this.end1.y - this.center.y, this.end1.x - this.center.x);
 		let a2 = Math.atan2(this.end2.y - this.center.y, this.end2.x - this.center.x);
 
-		if (Math.abs(a1 - a2) < EPSILON || Math.abs(a1 - a2 - Math.PI * 2) < EPSILON || r1 < EPSILON) {
+		if (circularArcDistance(a1, a2) < EPSILON || r1 < EPSILON) {
 			// There is some degeneracy in this case, so just return the first point.
 			return this.end1;
 		}
-		if (a2 < a1) {
-			a2 += Math.PI * 2;
-		}
 
-		const a = a1 * (1 - t) + a2 * t;
+		const a = circularArcLerp(a1, a2, t);
 
 		return {
 			x: Math.cos(a) * r1 + this.center.x,
