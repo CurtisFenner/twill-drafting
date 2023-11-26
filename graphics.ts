@@ -59,6 +59,69 @@ export function drawSketchedSegment(
 	ctx.stroke();
 }
 
+export function drawSketchedArc(
+	ctx: CanvasRenderingContext2D,
+	view: View,
+	centerWorld: Position | null,
+	end1World: Position | null,
+	end2World: Position | null,
+): void {
+	const RADII_LINE_DASH = [10, 10, 30, 10, 10, 20];
+	// Sketching a new arc
+	if (centerWorld === null) {
+		return;
+	}
+	ctx.lineWidth = SEGMENT_WIDTH;
+	ctx.lineCap = "round";
+	ctx.strokeStyle = COLOR_DRAFT;
+	const centerScreen = view.toScreen(centerWorld);
+	const end1Screen = end1World !== null ? view.toScreen(end1World) : null;
+	const end2Screen = end2World !== null ? view.toScreen(end2World) : null;
+
+
+	if (!end1Screen) {
+		// Nothing to draw.
+		return;
+	}
+
+	const radius = pointDistance(centerScreen, end1Screen);
+
+	ctx.save();
+	ctx.setLineDash(RADII_LINE_DASH);
+	ctx.beginPath();
+	ctx.moveTo(centerScreen.x, centerScreen.y);
+	ctx.lineTo(end1Screen.x, end1Screen.y);
+	ctx.stroke();
+	ctx.restore();
+
+	if (end2Screen) {
+		// Preview the output arc also.
+		ctx.beginPath();
+		ctx.arc(
+			centerScreen.x,
+			centerScreen.y,
+			radius,
+			Math.atan2(end1Screen.y - centerScreen.y, end1Screen.x - centerScreen.x),
+			Math.atan2(end2Screen.y - centerScreen.y, end2Screen.x - centerScreen.x),
+		);
+		ctx.stroke();
+	} else {
+		// Preview an arbitrary small arc, to show the direction.
+		ctx.beginPath();
+		ctx.arc(
+			centerScreen.x,
+			centerScreen.y,
+			radius,
+			Math.atan2(end1Screen.y - centerScreen.y, end1Screen.x - centerScreen.x),
+			Math.atan2(end1Screen.y - centerScreen.y, end1Screen.x - centerScreen.x) + Math.PI / 4,
+		);
+		ctx.stroke();
+	}
+
+
+
+}
+
 export function drawLengthDimension(
 	ctx: CanvasRenderingContext2D,
 	view: View,

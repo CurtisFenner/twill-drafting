@@ -144,6 +144,18 @@ function rerender(ctx: CanvasRenderingContext2D, canvas: HTMLCanvasElement): voi
 		const destination = choosePoint(lastMouseCursor);
 		graphics.drawSketchedSegment(ctx, view, cursorMode.from.position, destination.world);
 	}
+	if (cursorMode.tag === "draw-arc-mode") {
+		const destination = choosePoint(lastMouseCursor);
+		if (!cursorMode.center) {
+			// Nothing to draw
+		} else if (!cursorMode.end1) {
+			// Draw the radius
+			graphics.drawSketchedArc(ctx, view, cursorMode.center.position, destination.world, null);
+		} else if (!cursorMode.end2) {
+			// Draw the arc preview
+			graphics.drawSketchedArc(ctx, view, cursorMode.center.position, cursorMode.end1.position, destination.world);
+		}
+	}
 
 	const sketchingConstraint = convertSelectedFiguresToDimensionType();
 	if (sketchingConstraint !== null) {
