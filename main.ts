@@ -70,6 +70,15 @@ function screenDistanceToFigure(figure: figures.Figure, screenQuery: geometry.Po
 		const m = screenSegment.nearestToSegment(screenQuery);
 		const out = geometry.pointDistance(m.position, screenQuery) - LINE_RADIUS;
 		return out;
+	} else if (figure instanceof figures.ArcFigure) {
+		const screenArc = new geometry.Arc(
+			view.toScreen(figure.center.position),
+			view.toScreen(figure.end1.position),
+			view.toScreen(figure.end2.position),
+		);
+		const m = screenArc.nearestToArc(screenQuery);
+		const out = geometry.pointDistance(m.position, screenQuery) - LINE_RADIUS;
+		return out;
 	} else if (figure instanceof figures.DimensionPointDistanceFigure
 		|| figure instanceof figures.DimensionSegmentAngleFigure
 		|| figure instanceof figures.DimensionPointSegmentDistanceFigure) {
@@ -86,7 +95,7 @@ function screenDistanceToFigure(figure: figures.Figure, screenQuery: geometry.Po
 function figureOrdering(f: figures.Figure) {
 	if (f instanceof figures.PointFigure) {
 		return 3000;
-	} else if (f instanceof figures.SegmentFigure) {
+	} else if (f instanceof figures.SegmentFigure || f instanceof figures.ArcFigure) {
 		return 2000;
 	} else {
 		return 9000;
@@ -224,6 +233,8 @@ function rerender(ctx: CanvasRenderingContext2D, canvas: HTMLCanvasElement): voi
 			graphics.drawPoint(ctx, view, figure.position, ink);
 		} else if (figure instanceof figures.SegmentFigure) {
 			graphics.drawSegment(ctx, view, figure.from.position, figure.to.position, ink);
+		} else if (figure instanceof figures.ArcFigure) {
+			graphics.drawArc(ctx, view, figure.center.position, figure.end1.position, figure.end2.position, ink);
 		} else if (figure instanceof figures.DimensionPointDistanceFigure) {
 			graphics.drawLengthDimension(
 				ctx,
@@ -337,7 +348,7 @@ function cursorPosition(e: MouseEvent): geometry.Position {
 	};
 }
 
-type CursorMode = MoveMode | LineMode | DimensionMode | OrthogonalMode;
+type CursorMode = MoveMode | LineMode | DrawArcMode | DimensionMode | OrthogonalMode;
 
 const MOUSE_DRAG_MINIMUM_SCREEN_DISTANCE = 3;
 
@@ -371,6 +382,13 @@ type LineMode = {
 	from: null | figures.PointFigure,
 };
 
+type DrawArcMode = {
+	tag: "draw-arc-mode";
+	center: null | figures.PointFigure,
+	end1: null | figures.PointFigure,
+	end2: null | figures.PointFigure,
+}
+
 type DimensionMode = {
 	tag: "dimension",
 	constraining: figures.Figure[],
@@ -384,6 +402,7 @@ let cursorMode: CursorMode = {
 	tag: "lines",
 	from: null,
 };
+
 
 function choosePoint(screenCursor: geometry.Position): { world: geometry.Position, figure: figures.PointFigure | null, incident: figures.Figure[] } {
 	const hovering = getMouseHovering(screenCursor);
@@ -444,6 +463,21 @@ function createSegment(from: figures.PointFigure, to: figures.PointFigure): figu
 	}) as figures.SegmentFigure | undefined;
 	if (!existing) {
 		const out = new figures.SegmentFigure(from, to);
+		boardFigures.push(out);
+		return out;
+	}
+	return existing;
+}
+
+function createArc(center: figures.PointFigure, end1: figures.PointFigure, end2: figures.PointFigure): figures.ArcFigure {
+	const existing = boardFigures.find(figure => {
+		if (figure instanceof figures.ArcFigure) {
+			return figure.center === center && figure.end1 === end1 && figure.end2 === end2;
+		}
+		return false;
+	}) as figures.ArcFigure | undefined;
+	if (!existing) {
+		const out = new figures.ArcFigure(center, end1, end2);
 		boardFigures.push(out);
 		return out;
 	}
@@ -785,6 +819,30 @@ about.canvas.addEventListener("mousedown", e => {
 			}
 		}
 		return false;
+	} else if (cursorMode.tag === 'draw-arc-mode') {
+		if (e.button === 2) {
+			e.preventDefault();
+			cursorMode.center = null;
+			cursorMode.end1 = null;
+			cursorMode.end2 = null;
+		} else if (e.button === 0) {
+			if (cursorMode.center === null) {
+				const newPoint = chooseOrCreatePoint(cursorScreen);
+				cursorMode.center = newPoint;
+			} else if (cursorMode.end1 === null) {
+				const newPoint = chooseOrCreatePoint(cursorScreen);
+				cursorMode.end1 = newPoint;
+			} else if (cursorMode.end2 === null) {
+				const newPoint = chooseOrCreatePoint(cursorScreen);
+				cursorMode.end2 = newPoint;
+			}
+
+			if (cursorMode.center !== null && cursorMode.end1 !== null && cursorMode.end2 !== null) {
+				createArc(cursorMode.center, cursorMode.end1, cursorMode.end2);
+				modeMoveRadio.click();
+			}
+		}
+		return false;
 	} else if (cursorMode.tag === "dimension") {
 		if (e.button === 2) {
 			// Cancel dimension
@@ -843,6 +901,10 @@ document.addEventListener("keydown", e => {
 				deleteFigure(cursorMode.selected);
 			}
 		}
+		if (e.key === 'Escape' && cursorMode?.tag === 'lines') {
+			// When the 'Escape' button is pressed, stop drawing lines.
+			modeMoveRadio.click()
+		}
 	}
 });
 
@@ -884,6 +946,13 @@ function modeChange() {
 			tag: "lines",
 			from: null,
 		};
+	} else if (modeDrawArcsRadio.checked) {
+		cursorMode = {
+			tag: "draw-arc-mode",
+			center: null,
+			end1: null,
+			end2: null,
+		};
 	} else if (modeDimensionRadio.checked) {
 		cursorMode = {
 			tag: "dimension",
@@ -898,11 +967,13 @@ function modeChange() {
 
 const modeMoveRadio = document.getElementById("mode-move") as HTMLInputElement;
 const modeLinesRadio = document.getElementById("mode-lines") as HTMLInputElement;
+const modeDrawArcsRadio = document.getElementById("mode-draw-arcs") as HTMLInputElement;
 const modeDimensionRadio = document.getElementById("mode-dimension") as HTMLInputElement;
 const modeOrthogonalRadio = document.getElementById("mode-orthogonal") as HTMLInputElement;
 
 modeMoveRadio.addEventListener("input", modeChange);
 modeLinesRadio.addEventListener("input", modeChange);
+modeDrawArcsRadio.addEventListener("input", modeChange);
 modeDimensionRadio.addEventListener("input", modeChange);
 modeOrthogonalRadio.addEventListener("input", modeChange);
 

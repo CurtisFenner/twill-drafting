@@ -74,6 +74,73 @@ export class SegmentFigure implements Figure {
 	}
 }
 
+/**
+ * An `ArcFigure` is a partial circular arc with the provided `center` between the
+ * points `end1` and `end2`.
+ *
+ * The two points `end1` and `end2` should be equidistant to `center` for best
+ * behavior, but if not, the arc uses only the distance between `center` and `end1`
+ * as the arc radius.
+ *
+ * An `ArcFigure` cannot represent a full, 360 degree circle.
+ */
+export class ArcFigure implements Figure {
+	constructor(
+		public center: PointFigure,
+		public end1: PointFigure,
+		public end2: PointFigure,
+	) { }
+
+	dependsOn(): Figure[] {
+		return [this.center, this.end1, this.end2];
+	}
+	bounds(): geometry.Position[] {
+		const boundsPoints: geometry.Position[] = [
+			this.center.position,
+			this.end1.position,
+			this.end2.position,
+		];
+		return boundsPoints;
+	}
+
+	/**
+	 * Returns a point on the (clockwise) arc from `end1` to `end2`.
+	 *
+	 * Note that if `end1` and `end2` are not equidistant to the `center`, then the radius
+	 * is chosen using the distance to `end1`.
+	 *
+	 * If `end1` and `end2` are approximately the same angle from the center,
+	 * then linear interpolation between these ends is used instead of computing
+	 * the arc angle.
+	 *
+	 * Complete circles should always be made of multiple arcs.
+	 *
+	 * @param t parameter in range [0, 1].
+	 * @returns A point along the arc.
+	 */
+	pointFromParameter(t: number): geometry.Position {
+		const r1 = geometry.pointDistance(this.center.position, this.end1.position);
+
+		const a1 = Math.atan2(this.end1.position.y - this.center.position.y, this.end1.position.x - this.center.position.x);
+		let a2 = Math.atan2(this.end2.position.y - this.center.position.y, this.end2.position.x - this.center.position.x);
+
+		if (Math.abs(a1 - a2) < geometry.EPSILON || Math.abs(a1 - a2 - Math.PI * 2) < geometry.EPSILON || r1 < geometry.EPSILON) {
+			// There is some degeneracy in this case, so just lerp between the points instead.
+			return geometry.linearSum([1 - t, this.end1.position], [t, this.end2.position]);
+		}
+		if (a2 < a1) {
+			a2 += Math.PI * 2;
+		}
+
+		const a = a1 * (1 - t) + a2 * t;
+
+		return {
+			x: Math.cos(a) * r1 + this.center.position.x,
+			y: Math.sin(a) * r1 + this.center.position.y,
+		};
+	}
+}
+
 export class DimensionPointDistanceFigure extends AbstractDimensionFigure {
 	constructor(
 		public from: PointFigure,

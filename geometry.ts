@@ -81,6 +81,82 @@ export class Segment {
 	}
 }
 
+export class Arc {
+	constructor(
+		public readonly center: Position,
+		public readonly end1: Position,
+		public readonly end2: Position,
+	) { }
+
+	static angleDistance(a1: number, a2: number): number {
+		a1 %= Math.PI * 2;
+		a2 %= Math.PI * 2;
+		if (a2 < a1) {
+			a2 += Math.PI * 2;
+		}
+		return Math.min(a2 - a1, Math.abs(a1 + Math.PI * 2 - a2));
+	}
+
+
+	nearestToArc(
+		q: Position
+	): { t: number, position: Position } {
+		const a1 = Math.atan2(this.end1.y - this.center.y, this.end1.x - this.center.x);
+		let a2 = Math.atan2(this.end2.y - this.center.y, this.end2.x - this.center.x);
+		while (a2 < a1) {
+			a2 += Math.PI * 2;
+		}
+
+		if (Arc.angleDistance(a1, a2) < EPSILON) {
+			// The (center, end1, end2) are collinear, or end1 & end2 are nearly coincident.
+			// This is a degenerate case; just return something arbitrary.
+			return { t: 0, position: this.end1 };
+		}
+
+		let aQ = Math.atan2(q.y - this.center.y, q.x - this.center.x);
+		while (aQ < a1) {
+			aQ += Math.PI * 2;
+		}
+		// Clamp to the arc's valid angles.
+		aQ = Math.max(a1, Math.min(a2, aQ));
+		const t = (aQ - a1) / (a2 - a1);
+
+		return {
+			t,
+			position: this.pointAlong(t),
+		}
+	}
+
+	/**
+	 * Returns the point along the arc segment using the provided parameter.
+	 * Note that if the `end1` and `end2` are not equidistant to the center,
+	 * the arc has the radius of `center - end1`.
+	 * @param t the parameter in [0, 1]
+	 */
+	pointAlong(t: number): Position {
+		const r1 = pointDistance(this.center, this.end1);
+
+		const a1 = Math.atan2(this.end1.y - this.center.y, this.end1.x - this.center.x);
+		let a2 = Math.atan2(this.end2.y - this.center.y, this.end2.x - this.center.x);
+
+		if (Math.abs(a1 - a2) < EPSILON || Math.abs(a1 - a2 - Math.PI * 2) < EPSILON || r1 < EPSILON) {
+			// There is some degeneracy in this case, so just return the first point.
+			return this.end1;
+		}
+		if (a2 < a1) {
+			a2 += Math.PI * 2;
+		}
+
+		const a = a1 * (1 - t) + a2 * t;
+
+		return {
+			x: Math.cos(a) * r1 + this.center.x,
+			y: Math.sin(a) * r1 + this.center.y,
+		};
+	}
+
+}
+
 export function pointDistance(a: Position, b: Position): number {
 	const dx = b.x - a.x;
 	const dy = b.y - a.y;

@@ -264,3 +264,39 @@ export function drawSegment(
 	ctx.strokeStyle = ink;
 	ctx.stroke();
 }
+
+export function drawArc(
+	ctx: CanvasRenderingContext2D,
+	view: View,
+	centerWorld: Position,
+	end1World: Position,
+	end2World: Position,
+	ink: string,
+): void {
+	const centerScreen = view.toScreen(centerWorld);
+	const end1Screen = view.toScreen(end1World);
+	const end2Screen = view.toScreen(end2World);
+
+	let a1 = Math.atan2(end1Screen.y - centerScreen.y, end1Screen.x - centerScreen.x);
+	let a2 = Math.atan2(end2Screen.y - centerScreen.y, end2Screen.x - centerScreen.x);
+	if (a2 < a1) {
+		a2 += Math.PI * 2;
+	}
+
+	ctx.strokeStyle = ink;
+	ctx.lineWidth = SEGMENT_WIDTH + 2 * OUTLINE_WIDTH;
+	ctx.lineCap = "round";
+	ctx.strokeStyle = COLOR_BACKGROUND;
+	ctx.beginPath();
+	ctx.arc(
+		centerScreen.x,
+		centerScreen.y,
+		pointDistance(centerScreen, end1Screen),
+		a1,
+		a2,
+	);
+	ctx.stroke();
+	ctx.lineWidth = SEGMENT_WIDTH;
+	ctx.strokeStyle = ink;
+	ctx.stroke();
+}

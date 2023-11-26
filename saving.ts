@@ -11,6 +11,11 @@ type SerializedFigure = {
 	from: FigureID,
 	to: FigureID,
 } | {
+	class: "ArcFigure",
+	center: FigureID,
+	end1: FigureID,
+	end2: FigureID,
+} | {
 	class: "DimensionPointDistanceFigure",
 	from: FigureID,
 	to: FigureID,
@@ -49,6 +54,13 @@ function serializeFigure(
 			class: "SegmentFigure",
 			from: figureIDs(figure.from),
 			to: figureIDs(figure.to),
+		};
+	} else if (figure instanceof figures.ArcFigure) {
+		return {
+			class: "ArcFigure",
+			center: figureIDs(figure.center),
+			end1: figureIDs(figure.end1),
+			end2: figureIDs(figure.end2),
 		};
 	} else if (figure instanceof figures.DimensionPointDistanceFigure) {
 		return {
@@ -146,6 +158,12 @@ export function deserializeFigure(
 			figureWithID(object.from) as figures.PointFigure,
 			figureWithID(object.to) as figures.PointFigure,
 		);
+	} else if (object.class === 'ArcFigure') {
+		return new figures.ArcFigure(
+			figureWithID(object.center) as figures.PointFigure,
+			figureWithID(object.end1) as figures.PointFigure,
+			figureWithID(object.end2) as figures.PointFigure,
+		)
 	}
 	const _: never = object;
 	console.error("deserializeFigure:", object);
