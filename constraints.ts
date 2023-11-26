@@ -1,4 +1,4 @@
-import { sortedBy } from "./data.js";
+import { shuffled, sortedBy } from "./data.js";
 import * as geometry from "./geometry.js";
 
 type DistanceConstraint = {
@@ -148,6 +148,47 @@ export function solve(
 	initialPoints: Map<string, geometry.Position>,
 	constraints: Constraint[],
 ) {
+	let solution = solveOnce(initialPoints, constraints);
+	for (let i = 0; i < 0; i++) {
+		const solutionErrors = countErrors(solution.log);
+		if (solutionErrors === 0) {
+			return solution;
+		}
+
+		const alternative = new Map(shuffled([...initialPoints]));
+		const alternativeSolution = solveOnce(alternative, shuffled(constraints));
+		const alternativeErrors = countErrors(alternativeSolution.log);
+		if (alternativeErrors < solutionErrors) {
+			solution = alternativeSolution;
+		}
+	}
+	return solution;
+}
+
+function countErrors(
+	log: { localSolution: { freedom: number } }[],
+): number {
+	let sum = 0;
+	for (const entry of log) {
+		if (entry.localSolution.freedom === 0) {
+			sum += 1;
+		}
+	}
+	return sum;
+}
+
+export function solveOnce(
+	initialPoints: Map<string, geometry.Position>,
+	constraints: Constraint[],
+): {
+	solution: Map<string, geometry.Position>;
+	log: {
+		solution: geometry.Position;
+		variable: string;
+		localSolution: { intersection: Gamut; constraints: Gamut[]; freedom: number; };
+		initialPoint: geometry.Position;
+	}[];
+} {
 	const solution = new Map<string, geometry.Position>();
 	function constraintIsCertainExcept(constraint: Constraint, except: string): boolean {
 		const uncertainDependency = constraintDependencies(constraint).find(dependency => {

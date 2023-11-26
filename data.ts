@@ -12,3 +12,10 @@ export function inPlaceFilter<T>(array: T[], predicate: (element: T) => boolean)
 	}
 	array.length = write;
 }
+
+export function shuffled<T>(array: T[]): T[] {
+	return array
+		.map(e => ({ e, t: Math.random() }))
+		.sort((a, b) => a.t - b.t)
+		.map(e => e.e);
+}

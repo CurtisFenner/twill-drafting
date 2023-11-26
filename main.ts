@@ -296,18 +296,18 @@ function drawGamut(
 		ctx.ellipse(center.x, center.y, radius, radius, 0, 0, Math.PI * 2);
 		ctx.stroke();
 	} else if (gamut.tag === "line") {
-		let a = view.toScreen(gamut.line.from);
-		let b = view.toScreen(gamut.line.to);
+		const a = view.toScreen(gamut.line.from);
+		const b = view.toScreen(gamut.line.to);
 		const direction = geometry.pointSubtract(b, a);
 		if (geometry.pointMagnitude(direction) < 0.001) {
 			return;
 		}
 		const unit = geometry.pointUnit(direction);
-		a = geometry.linearSum([1, a], [100000, unit]);
-		b = geometry.linearSum([1, a], [-100000, unit]);
+		const limit0 = geometry.linearSum([0.5, a], [0.5, b], [10000, unit]);
+		const limit1 = geometry.linearSum([0.5, a], [0.5, b], [-10000, unit]);
 		ctx.beginPath();
-		ctx.moveTo(a.x, a.y);
-		ctx.lineTo(b.x, b.y);
+		ctx.moveTo(limit0.x, limit0.y);
+		ctx.lineTo(limit1.x, limit1.y);
 		ctx.stroke();
 	} else if (gamut.tag === "plane" || gamut.tag === "void") {
 		// Draw nothing
@@ -993,47 +993,49 @@ function recalculateConstraints() {
 		}
 	}
 
-	const solution = constraints.solve(variables, cs);
-	for (const [variableName, newPosition] of solution.solution) {
-		if (pointByName.has(variableName)) {
-			const point = pointByName.get(variableName)!;
-			point.position = newPosition;
-		}
-	}
-
-	const serialization = saving.serializeFigures(boardFigures);
-	if (serialization !== lastSerialization) {
-		logDiv.innerHTML = "";
-		const showGamut = (gamut: constraints.Gamut): string => {
-			if (gamut.tag === "union") {
-				return "(" + gamut.union.map(showGamut).join(" | ") + ")";
+	if ((document.getElementById("enforce-constraints") as HTMLInputElement).checked) {
+		const serialization = saving.serializeFigures(boardFigures);
+		if (serialization !== lastSerialization) {
+			const solution = constraints.solve(variables, cs);
+			for (const [variableName, newPosition] of solution.solution) {
+				if (pointByName.has(variableName)) {
+					const point = pointByName.get(variableName)!;
+					point.position = newPosition;
+				}
 			}
-			return gamut.tag;
-		};
-		const table = document.createElement("table");
-		for (const row of solution.log) {
-			const tr = document.createElement("tr");
-			const th = document.createElement("th");
-			const td = document.createElement("td");
-			th.textContent = row.localSolution.freedom.toString();
-			td.textContent = row.localSolution.constraints.map(showGamut).join(" & ");
-			tr.appendChild(th);
-			tr.appendChild(td);
-			table.appendChild(tr);
-			tr.addEventListener("mouseenter", () => {
-				highlightedIntersection = {
-					point: row.solution,
-					gamuts: row.localSolution.constraints,
-				};
+
+			logDiv.innerHTML = "";
+			const showGamut = (gamut: constraints.Gamut): string => {
+				if (gamut.tag === "union") {
+					return "(" + gamut.union.map(showGamut).join(" | ") + ")";
+				}
+				return gamut.tag;
+			};
+			const table = document.createElement("table");
+			for (const row of solution.log) {
+				const tr = document.createElement("tr");
+				const th = document.createElement("th");
+				const td = document.createElement("td");
+				th.textContent = row.localSolution.freedom.toString();
+				td.textContent = row.localSolution.constraints.map(showGamut).join(" & ");
+				tr.appendChild(th);
+				tr.appendChild(td);
+				table.appendChild(tr);
+				tr.addEventListener("mouseenter", () => {
+					highlightedIntersection = {
+						point: row.solution,
+						gamuts: row.localSolution.constraints,
+					};
+				});
+			}
+			table.addEventListener("mouseleave", () => {
+				highlightedIntersection = { point: null, gamuts: [] };
 			});
+
+			logDiv.appendChild(table);
+
+			lastSerialization = serialization;
 		}
-		table.addEventListener("mouseleave", () => {
-			highlightedIntersection = { point: null, gamuts: [] };
-		});
-
-		logDiv.appendChild(table);
-
-		lastSerialization = serialization;
 	}
 }
 
