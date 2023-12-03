@@ -156,6 +156,14 @@ function rerender(ctx: CanvasRenderingContext2D, canvas: HTMLCanvasElement): voi
 			graphics.drawSketchedArc(ctx, view, cursorMode.center.position, cursorMode.end1.position, destination.world);
 		}
 	}
+	if (cursorMode.tag === 'dimension') {
+		if (cursorMode.constraining.length === 1) {
+			const constrainingFigure = cursorMode.constraining[0];
+			if (constrainingFigure instanceof figures.PointFigure) {
+				graphics.drawHighlightedPoint(ctx, view, constrainingFigure.position);
+			}
+		}
+	}
 
 	const sketchingConstraint = convertSelectedFiguresToDimensionType();
 	if (sketchingConstraint !== null) {

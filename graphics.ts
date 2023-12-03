@@ -117,9 +117,21 @@ export function drawSketchedArc(
 		);
 		ctx.stroke();
 	}
+}
 
-
-
+export function drawHighlightedPoint(
+	ctx: CanvasRenderingContext2D,
+	view: View,
+	atWorld: Position,
+): void {
+	ctx.lineWidth = SEGMENT_WIDTH;
+	ctx.lineCap = "round";
+	ctx.strokeStyle = COLOR_SELECTED;
+	const atScreen = view.toScreen(atWorld);
+	ctx.beginPath();
+	ctx.arc(atScreen.x, atScreen.y, SEGMENT_WIDTH * 3, 0, 6.28);
+	ctx.closePath();
+	ctx.stroke();
 }
 
 export function drawLengthDimension(
