@@ -1,3 +1,17 @@
+:root {
+	--button-primary-color: #47d;
+	--button-primary-color--hover: rgb(34, 115, 147);
+	--button-primary-color--active: rgb(15, 46, 108);
+	--button-primary-text-color: white;
+
+	--option-hover: rgba(30, 50, 90, 0.25);
+
+	--border-radius: 5px;
+	--interactive-shadow: 0 0 2px rgba(0, 0, 0, 0.5), 0 1px 1px 1px rgba(0, 0, 0, 0.2);
+
+	--focus-ring-outline: 4px solid rgba(50, 120, 255, 0.5)
+}
+
 body {
 	margin: 0;
 	padding: 0;
@@ -72,17 +86,41 @@ label,
 button,
 input[type="text"],
 select {
-	border-radius: 5px;
+	border-radius: var(--border-radius);
 	padding: 0.25em;
 	margin-right: 0.5em;
-	box-shadow: 0 1px 4px 2px rgba(0, 0, 0, 0.125);
+	box-shadow: var(--interactive-shadow);
 	color: black;
 	background-color: transparent;
 	border: none;
 	outline: none;
 
-	font-size: 1em;
+	font-size: inherit;
 	font-family: 'Josefin Slab';
+}
+
+input[type='text'],
+select {
+	border: 1px solid #aaa;
+	padding: calc(0.25em - 1px);
+	border-radius: 3px;
+}
+
+:is(label, button, input, select):focus-visible {
+	outline: var(--focus-ring-outline);
+}
+
+button {
+	background-color: var(--button-primary-color);
+	color: var(--button-primary-text-color);
+}
+
+button:hover {
+	background-color: var(--button-primary-color--hover);
+}
+
+button:active {
+	background-color: var(--button-primary-color--active);
 }
 
 table {
@@ -96,4 +134,50 @@ th {
 	border-bottom: 1px solid #DDD;
 	border-right: 1px solid #DDD;
 	padding: 0.25em;
+}
+
+.tool-switch {
+	display: inline-flex;
+	box-shadow: var(--interactive-shadow);
+	border-radius: var(--border-radius);
+}
+
+.tool-switch>label {
+	position: relative;
+	margin: 0;
+	box-shadow: none;
+}
+
+.tool-switch:has(:focus-visible) {
+	outline: var(--focus-ring-outline);
+}
+
+.tool-switch>label:hover {
+	background-color: var(--option-hover);
+}
+
+.tool-switch>label>input {
+	appearance: none;
+	position: absolute;
+	left: -5px;
+	bottom: 0;
+	width: 9px;
+	height: 9px;
+	outline: none;
+}
+
+.tool-switch>label:not(:first-child) {
+	border-top-left-radius: 0;
+	border-bottom-left-radius: 0;
+	border-left: 1px solid #aaa;
+}
+
+.tool-switch>label:not(:last-child) {
+	border-top-right-radius: 0;
+	border-bottom-right-radius: 0;
+}
+
+.tool-switch>label:has(:checked) {
+	background-color: var(--button-primary-color);
+	color: var(--button-primary-text-color);
 }
