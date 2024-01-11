@@ -16,6 +16,8 @@ export const LABELING_WIDTH = 1;
 export const DIMENSION_GAP = 7;
 
 export class View {
+	public zoomLocked = false;
+
 	constructor(
 		public canvas: HTMLCanvasElement,
 		public center: Position,

@@ -13,7 +13,6 @@ function createFullscreenCanvas(rerender: (ctx: CanvasRenderingContext2D, canvas
 	}
 	const ctx = ctxOrNull;
 
-
 	let canceled = false;
 	function frame() {
 		if (canceled) {
@@ -523,14 +522,16 @@ about.canvas.addEventListener("wheel", e => {
 	const zoomChange = Math.exp(-pixelsScrolled / 500);
 	const cursorScreen = cursorPosition(e);
 	const cursorWorld = view.toWorld(cursorScreen);
-	view.pixelsPerMilli *= zoomChange;
-	const newCursorWorld = view.toWorld(cursorScreen);
-	view.center = geometry.linearSum(
-		[1, view.center],
-		[-1, geometry.pointSubtract(newCursorWorld, cursorWorld)],
-	);
-	if (panStart !== null) {
-		// TODO! Fixup
+	if (!view.zoomLocked) {
+		view.pixelsPerMilli *= zoomChange;
+		const newCursorWorld = view.toWorld(cursorScreen);
+		view.center = geometry.linearSum(
+			[1, view.center],
+			[-1, geometry.pointSubtract(newCursorWorld, cursorWorld)],
+		);
+		if (panStart !== null) {
+			// TODO! Fixup
+		}
 	}
 });
 
@@ -1165,9 +1166,18 @@ viewModeSelect.addEventListener("input", () => {
 		about.canvas.width = Math.round(pixelsPerMm * rangeMm.x);
 		about.canvas.height = Math.round(pixelsPerMm * rangeMm.y);
 		view.pixelsPerMilli = pixelsPerMm;
+		view.zoomLocked = true;
+		(document.getElementById("print-style") as HTMLStyleElement).innerHTML = `
+			@page {
+				size: ${about.canvas.style.width} ${about.canvas.style.height};
+			}
+		`;
+		document.body.style.setProperty("--print-width", about.canvas.style.width);
+		document.body.style.setProperty("--print-height", about.canvas.style.height);
 	} else if (viewModeSelect.value === "edit") {
 		const pixelsPerMm = 72 / 25.4;
 		view.pixelsPerMilli = pixelsPerMm;
+		view.zoomLocked = false;
 		about.canvas.style.width = "auto";
 		about.canvas.style.height = "auto";
 		resizeCanvasToBody();
